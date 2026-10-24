@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Persona 4: Dancing All Night
+Comment=PC port of Persona 4: Dancing All Night (bring your own game dump)
+Exec=AppRun
+Icon=p4d
+Categories=Game;
+Terminal=false
+StartupWMClass=p4d

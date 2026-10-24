@@ -1,0 +1,36 @@
+/* Play Persona 4 Dancing All Night.exe: starts the game with the settings saved by the launcher,
+ * without opening the launcher (it runs `Persona 4 Dancing All Night.exe --play` from its own folder and waits for it, so Steam
+ * and other front ends see the game running). Extra arguments are passed on. */
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <wchar.h>
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR arguments, int show)
+{
+    (void)instance, (void)previous, (void)show;
+    static wchar_t dir[32768], exe[32768], line[32768];
+    DWORD length = GetModuleFileNameW(NULL, dir, 32768);
+    if (length == 0 || length >= 32768)
+        return 1;
+    wchar_t *slash = wcsrchr(dir, L'\\');
+    if (slash)
+        *slash = 0;
+    swprintf(exe, 32768, L"%ls\\Persona 4 Dancing All Night.exe", dir);
+    swprintf(line, 32768, L"\"%ls\" --play%ls%ls", exe, arguments && *arguments ? L" " : L"",
+             arguments ? arguments : L"");
+
+    STARTUPINFOW startup = {.cb = sizeof(startup)};
+    PROCESS_INFORMATION process;
+    if (!CreateProcessW(exe, line, NULL, NULL, FALSE, 0, NULL, dir, &startup, &process)) {
+        MessageBoxW(NULL, L"Persona 4 Dancing All Night.exe was not found next to this file.",
+                    L"Persona 4: Dancing All Night",
+                    MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    CloseHandle(process.hThread);
+    WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(process.hProcess, &code);
+    CloseHandle(process.hProcess);
+    return (int)code;
+}
