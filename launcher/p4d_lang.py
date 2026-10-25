@@ -1370,6 +1370,42 @@ EXTRA['es'].update({
         'Carpetas extraídas de los paquetes DLC, cada ADDCONT<etiqueta> con sce_sys/param.sfo '
         '(directamente dentro, o un nivel más abajo como CUSA12112/). Vacío: la carpeta dlc junto al launcher.',
 })
+EXTRA['pt'].update({
+    'DLC folder (optional)': 'Pasta de DLC (opcional)',
+    'Choose the folder with the extracted DLC (ADDCONT folders)':
+        'Escolha a pasta com as DLC extraídas (pastas ADDCONT)',
+    'Folders extracted from the DLC packages, each ADDCONT<label> with sce_sys/param.sfo '
+    '(directly inside, or one level below such as CUSA12112/). Empty: the dlc folder next to the launcher.':
+        'Pastas extraídas dos pacotes de DLC, cada ADDCONT<rótulo> com sce_sys/param.sfo '
+        '(diretamente dentro, ou um nível abaixo como CUSA12112/). Vazio: a pasta dlc ao lado do launcher.',
+})
+
+EXTRA['es'].update({
+    'Trophies': 'Logros',
+    'The game runs at up to 60 FPS.': 'El juego funciona a 60 FPS como máximo.',
+    'by {} · v{}': 'por {} · v{}',
+    'Trophies the game unlocks while you play; kept with your saves.':
+        'Los trofeos que desbloqueas al jugar; se guardan junto a tus partidas.',
+    '{} of {} trophies earned': '{} de {} trofeos obtenidos',
+    'All': 'Todos', 'Earned': 'Obtenidos', 'Locked': 'Pendientes',
+    'Platinum': 'Platino', 'Gold': 'Oro', 'Silver': 'Plata', 'Bronze': 'Bronce',
+    'No trophies yet. They appear here as soon as the game unlocks them.':
+        'Aún no tienes trofeos. Aparecen aquí en cuanto el juego los desbloquea.',
+    'Every trophy is earned.': 'Has obtenido todos los trofeos.',
+})
+EXTRA['pt'].update({
+    'Trophies': 'Troféus',
+    'The game runs at up to 60 FPS.': 'O jogo roda a no máximo 60 FPS.',
+    'by {} · v{}': 'por {} · v{}',
+    'Trophies the game unlocks while you play; kept with your saves.':
+        'Os troféus que você desbloqueia jogando; ficam junto com seus saves.',
+    '{} of {} trophies earned': '{} de {} troféus obtidos',
+    'All': 'Todos', 'Earned': 'Obtidos', 'Locked': 'Bloqueados',
+    'Platinum': 'Platina', 'Gold': 'Ouro', 'Silver': 'Prata', 'Bronze': 'Bronze',
+    'No trophies yet. They appear here as soon as the game unlocks them.':
+        'Nenhum troféu ainda. Eles aparecem aqui assim que o jogo os desbloqueia.',
+    'Every trophy is earned.': 'Você obteve todos os troféus.',
+})
 
 _tables = {}
 

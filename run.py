@@ -220,6 +220,13 @@ def main():
         dlc_dir = Path(env.get('P4D_DLC_DIR') or default_dlc_dir(data))
         run_script('content_profile.py', game, '--out', out, '--sku', env.get('P4D_CONTENT_SKU', 'full'),
                    '--dlc-dir', dlc_dir)
+        # Trophies: the list for the runtime and the icons for the in-game notice (scripts/trophies.py).
+        try:
+            import trophies
+            trophy_list, trophy_icons = trophies.prepare(game, out, env.get('P4D_TROPHY_LANGUAGE'))
+            env['P4D_TROPHY_LIST'], env['P4D_TROPHY_ICONS'] = str(trophy_list), str(trophy_icons)
+        except Exception as error:  # noqa: BLE001  (trophies only: the game starts without them)
+            print(f'Trophies: unavailable ({error})', flush=True)
         addcont = out / 'addcont.txt'
         addcont_args = ['--addcont-list', str(addcont)] if addcont.is_file() and addcont.stat().st_size else []
 

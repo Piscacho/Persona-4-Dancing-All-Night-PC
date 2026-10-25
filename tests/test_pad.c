@@ -11,12 +11,7 @@ static int vibration_percent=100;
 static uint16_t rumble_low, rumble_high;
 int p4dgpu_overlay_captures_input(void) { return capture; }
 int p4dgpu_vibration_percent(void) { return vibration_percent; }
-static int engine_fps_cycles;
-void p4dgpu_engine_fps_cycle(void) { ++engine_fps_cycles; }
-int p4dgpu_mouse_prompt_distance(void) { return 48; }
 void p4dgpu_mouse_pause_key(void) {}
-int p4dgpu_mouse_aim_style(void) { return 0; }
-int p4dgpu_mouse_aim_sensitivity(void) { return 100; }
 
 static bool SDLCALL record_rumble(void *userdata, uint16_t low, uint16_t high) {
     (void)userdata;
@@ -63,7 +58,8 @@ int main(void) {
 
     /* A click without a touch surface (Back, Tab, Backspace, the pad file) plays like a finger:
      * the touch comes first, the button CLICK_LEAD_US later, and the touch stays CLICK_TAIL_US
-     * after the release: games read a click on its release with the finger still down; a touch that appears and vanishes with the button is ignored. */
+     * after the release. A game reads a left click on its release with
+     * the finger still down; a touch that appears and vanishes with the button is ignored. */
     inject(path,"cross l3 touchpad_left");
     PadData data=read_pad();
     assert((data.buttons & (BTN_CROSS|BTN_L3))==(BTN_CROSS|BTN_L3));
@@ -127,27 +123,14 @@ int main(void) {
     data=read_pad();
     assert(data.buttons==0 && data.touch_count==0);
 
-    /* R3 + L1 + R1 cycles the engine frame rate once per press; the three stay hidden from
-     * the game until each one is released (a stray R1 would grab in the middle of a ledge). */
-    inject(path,"r3 l1");
-    data=read_pad();
-    assert((data.buttons & (BTN_R3|BTN_L1))==(BTN_R3|BTN_L1) && engine_fps_cycles==0);
+    /* L1 and R1 together (a two-handed scratch) reach the game as pressed, with R3 too: no
+     * button combination is kept from the game. */
     inject(path,"r3 l1 r1 cross");
     data=read_pad();
-    assert(engine_fps_cycles==1 && !(data.buttons & (BTN_R3|BTN_L1|BTN_R1)) && (data.buttons & BTN_CROSS));
-    data=read_pad();
-    assert(engine_fps_cycles==1 && !(data.buttons & (BTN_R3|BTN_L1|BTN_R1)));
+    assert((data.buttons & (BTN_R3|BTN_L1|BTN_R1|BTN_CROSS))==(BTN_R3|BTN_L1|BTN_R1|BTN_CROSS));
     inject(path,"l1 r1");
     data=read_pad();
-    assert(engine_fps_cycles==1 && data.buttons==0);
-    inject(path,"");
-    data=read_pad();
-    inject(path,"l1");
-    data=read_pad();
-    assert(data.buttons==BTN_L1 && engine_fps_cycles==1);
-    inject(path,"r3 l1 r1");
-    data=read_pad();
-    assert(engine_fps_cycles==2 && data.buttons==0);
+    assert(data.buttons==(BTN_L1|BTN_R1));
     inject(path,"");
     data=read_pad();
     assert(data.buttons==0);

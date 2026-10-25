@@ -47,6 +47,7 @@ sys.path.insert(0, str(PORT_DIR / 'scripts'))
 import graphics_options  # noqa: E402  (scripts/)
 import save_backup  # noqa: E402  (scripts/)
 import steam_shortcut  # noqa: E402  (scripts/)
+import trophies  # noqa: E402  (scripts/)
 from patches import game_profile, game_sfo  # noqa: E402  (scripts/)
 from prepare import load_sfo  # noqa: E402  (scripts/)
 DATA_DIR = Path(os.environ.get('P4D_DATA_DIR', PORT_DIR))
@@ -61,7 +62,7 @@ NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 NEW_GROUP = {} if WINDOWS else {'start_new_session': True}
 UI_FONT, MONO_FONT, SERIF_FONT = 'Segoe UI', 'Consolas', 'Georgia'
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 # Updates come from this port's GitHub releases (tags windows-v<VERSION>, one .zip asset).
 UPDATES = True
 RELEASES_API = 'https://api.github.com/repos/Piscacho/Persona-4-Dancing-All-Night-PC/releases/latest'
@@ -71,6 +72,21 @@ UPDATE_DIR = Path(tempfile.gettempdir()) / 'p4d-update'
 USER_FILES = ('user', 'out', 'mods', 'dlc', 'p4d.ini', 'mods.json', 'mods_presets.json', 'patches.json', 'last_run.log')
 # No bundled title face: headings use Windows' Bahnschrift (pick_fonts).
 FONT_FILE = PORT_DIR / 'launcher' / 'heading.ttf'
+# The sidebar: the game's logo (launcher/logo.png; without it, the emblem cut live from the
+# game's icon0.png without its backdrop), then "PORT PC" as a neon sign in a face like the game's
+# (Lilita One, SIL OFL 1.1, launcher/brand-OFL.txt) and the author with the version.
+LOGO_FILE = PORT_DIR / 'launcher' / 'logo.png'
+
+
+def logo_background(r, g, b):
+    """The icon's backdrop (the purple and blue lights), flooded away around the emblem."""
+    return b > 70 and b >= r * 0.75 and g < 0.8 * b and not (r > 200 and b < 170)
+
+
+BRAND_FONT_FILE = PORT_DIR / 'launcher' / 'brand.ttf'
+BRAND_FAMILY = 'Lilita One'
+BRAND_LOADED = False
+AUTHOR = 'Piscacho'
 FR_PRIVATE = 0x10
 
 
@@ -401,7 +417,7 @@ INI_DEFAULTS = {'upscaler': 'fsr3', 'preset': '1',
                 'object_motion': '1', 'show_fps': '1', 'output_res': '1920x1080',
                 'live_resolution': 'auto', 'display_mode': 'windowed', 'vsync': '1', 'fps_limit': '0',
                 'async_shaders': '1', 'deferred_readback': '1', 'stale_readback': '1',
-                'render_resolution': 'native', 'engine_fps': '120',
+                'render_resolution': 'native', 'engine_fps': '60',
                 'frames_queued': '1',
                 'anisotropy': '0', 'vibration': '100', 'mouse_lock': '1'}
 def default_game_dir():
@@ -416,8 +432,9 @@ DISPLAY_MODES = [('windowed', ('Windowed',)), ('borderless', ('Borderless',)), (
 ANISOTROPY = [('0', ('Game default',)), ('2', ('2x',)), ('4', ('4x',)), ('8', ('8x',)), ('16', ('16x',))]
 FPS_LIMITS = [('30', ('30',)), ('60', ('60',)), ('100', ('100',)), ('120', ('120',)), ('240', ('240',)), ('0', ('Unlimited',))]
 # The sidebar's pages, top to bottom, and the methods that refresh a page's lists when it is shown.
-PAGES = ('home', 'graphics', 'performance', 'game', 'controls', 'mods', 'advanced')
-PAGE_REFRESH = {'home': ('refresh_status',), 'game': ('refresh_game_patches',), 'mods': ('refresh_lists',)}
+PAGES = ('home', 'graphics', 'performance', 'game', 'controls', 'mods', 'trophies', 'advanced')
+PAGE_REFRESH = {'home': ('refresh_status',), 'game': ('refresh_game_patches',), 'mods': ('refresh_lists',),
+                'trophies': ('refresh_trophies',)}
 UI_SCALES = [('auto', ('Auto',)), ('1', ('1x',)), ('2', ('2x',))]
 APP_DEFAULTS = {'ui_language': '', 'ui_scale': 'auto', 'game_dir': os.environ.get('P4D_GAME_DIR', str(default_game_dir()) if WINDOWS else ''), 'update_dir': '', 'dlc_dir': '', 'experimental_upscaler': False,
                 'video_backend': 'auto', 'gamemode': False, 'mangohud': False, 'desktop_integration': True, 'user_dir': '',
@@ -426,18 +443,21 @@ APP_DEFAULTS = {'ui_language': '', 'ui_scale': 'auto', 'game_dir': os.environ.ge
                 'gpu_id': '', 'partial_height_views': True, 'background_warmup': True, 'parallel_warmup': True, 'pipeline_binary_cache': True,
                 'perf_diag': False, 'frame_capture_key': False, 'frame_stats': False, 'gpu_profile': False,
                 'vk_validation': False, 'close_on_play': False, 'discord_rpc': False,
-                'check_updates': False, 'game_patches': {}, 'controls': {}, 'pad_style': 'playstation',
+                'check_updates': True, 'game_patches': {}, 'controls': {}, 'pad_style': 'playstation',
                 'controls_layout': 2}
 
 # PS4 button, default key, default gamepad button (SDL names; src/runtime_pad.c). L2/R2 come
 # from the analog triggers and the left touchpad click from L1 + the right click's
 # button; neither is remapped on the gamepad.
-CONTROLS = [('cross', 'Space', 'a'), ('circle', 'Left Shift', 'b'), ('square', 'E', 'x'),
-            ('triangle', 'Q', 'y'), ('l1', '1', 'leftshoulder'), ('r1', '3', 'rightshoulder'),
+# The keyboard defaults follow Persona 4 Dancing's notes: the d-pad on W A S D (the arrow keys too,
+# while up/left/down/right keep their default), Triangle, Circle, Cross on I L K and the scratch
+# on Q / E (Space is a second R1 in the game's own map).
+CONTROLS = [('up', 'W', 'dpup'), ('left', 'A', 'dpleft'), ('down', 'S', 'dpdown'), ('right', 'D', 'dpright'),
+            ('triangle', 'I', 'y'), ('circle', 'L', 'b'), ('cross', 'K', 'a'), ('square', 'J', 'x'),
+            ('l1', 'Q', 'leftshoulder'), ('r1', 'E', 'rightshoulder'),
             ('l2', 'R', None), ('r2', 'F', None), ('l3', 'Z', 'leftstick'),
             ('r3', 'C', 'rightstick'), ('options', 'Return', 'start'),
-            ('touchpad_left', 'Tab', None), ('touchpad_right', 'Backspace', 'back'),
-            ('up', 'I', 'dpup'), ('down', 'K', 'dpdown'), ('left', 'J', 'dpleft'), ('right', 'L', 'dpright')]
+            ('touchpad_left', 'Tab', None), ('touchpad_right', 'Backspace', 'back')]
 PS_BUTTON_NAMES = {'cross': 'Cross', 'circle': 'Circle', 'square': 'Square', 'triangle': 'Triangle',
                    'l1': 'L1', 'r1': 'R1', 'l2': 'L2', 'r2': 'R2', 'l3': 'L3', 'r3': 'R3',
                    'options': 'Options', 'touchpad_left': 'Touchpad left', 'touchpad_right': 'Touchpad right',
@@ -1112,6 +1132,7 @@ def game_environment(s):
         env['P4D_PAD_MAP'] = value
     env.pop('P4D_STICK_PROMPTS', None)
     env.pop('P4D_GLYPH_STYLE', None)
+    env['P4D_TROPHY_LANGUAGE'] = LANG or 'en'  # the in-game trophy notice speaks the launcher's language
     env['PYTHONUNBUFFERED'] = '1'
     env['PYTHONIOENCODING'] = 'utf-8'
     return env
@@ -1125,6 +1146,9 @@ BG, PANEL, CARD, LINE = '#0c0a12', '#15121d', '#1e1a29', '#2f2a3d'
 TEXT, MUTED, ACCENT, ACCENT_HI = '#f6f2e6', '#9c96ab', '#ffd200', '#ffe352'
 ON_ACCENT = '#16131c'  # text on the yellow
 CONFLICT = '#ff9ccf'
+# Trophy grades: the console's colours.
+TROPHY_COLORS = {'platinum': '#b9d3ee', 'gold': '#e5c158', 'silver': '#c8c8cd', 'bronze': '#c48a5a'}
+GRADE_NAMES = {'platinum': 'Platinum', 'gold': 'Gold', 'silver': 'Silver', 'bronze': 'Bronze'}
 def pad_labels(style):
     """SDL gamepad button name -> its label in this naming style, in the launcher's language."""
     return {name: _(label) for name, label in PAD_STYLES[style].items()}
@@ -1203,6 +1227,7 @@ class Launcher:
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.after(100, self.drain_output)
         root.after(500, self.watch_changes)
+        root.after(3000, self.poll_trophies)
         if WINDOWS and UPDATES and self.app.get('check_updates', True):
             threading.Thread(target=self.check_update, daemon=True).start()
 
@@ -1543,14 +1568,21 @@ class Launcher:
         side = tk.Frame(self.root, bg=BG, width=self.px(220))
         side.pack(side='left', fill='y')
         side.pack_propagate(False)
+        self.side_logo_source, self.side_logo_image = None, None
         self.side_title = tk.Label(side, text=APP_NAME.upper(), bg=BG, fg=TEXT,
                                    font=self.heading_font(15, every_language=True),
-                                   wraplength=self.px(190), justify='left')
-        self.side_title.pack(anchor='w', padx=self.px(22), pady=self.px((24, 22)))
+                                   wraplength=self.px(190), justify='center')
+        self.side_title.pack(padx=self.px(14), pady=self.px((16, 0)))
+        self.side_brand_image = None
+        self.side_brand = tk.Label(side, text='PORT PC', bg=BG, fg=ACCENT_HI,
+                                   font=self.font(BRAND_FAMILY, 13) if BRAND_LOADED else self.heading_font(13))
+        self.side_brand.pack()
+        tk.Label(side, text=_('by {} · v{}').format(AUTHOR, VERSION), bg=BG, fg=MUTED,
+                 font=self.font(UI_FONT, 9)).pack(pady=self.px((0, 16)))
         self.side = side
         self.nav, self.current_page = {}, None
         titles = {'home': _('Home'), 'graphics': _('Graphics', 'Графика'), 'performance': _('Performance'),
-                  'game': _('Game', 'Игра'), 'controls': _('Controls', 'Управление'), 'mods': _('Mods', 'Моды'), 'advanced': _('Advanced', 'Дополнительно')}
+                  'game': _('Game', 'Игра'), 'controls': _('Controls', 'Управление'), 'mods': _('Mods', 'Моды'), 'trophies': _('Trophies'), 'advanced': _('Advanced', 'Дополнительно')}
         for name in PAGES:
             item = tk.Label(side, text='    ' + titles[name], bg=BG, fg=TEXT, anchor='w',
                             font=self.heading_font(11, UI_FONT),
@@ -1565,8 +1597,7 @@ class Launcher:
         self.side_note = tk.Label(side, text=_('In the game: Insert or R3+L2\nopens the port\'s menu.',
                                                'В игре: Insert или R3+L2\nоткрывает меню порта.'),
                                   bg=BG, fg=MUTED, font=self.font(UI_FONT, 9), justify='left', wraplength=self.px(210))
-        self.side_note.pack(anchor='w', padx=self.px(22), pady=self.px((0, 4)))
-        tk.Label(side, text=f'v{VERSION}', bg=BG, fg=MUTED, font=self.font(UI_FONT, 9)).pack(anchor='w', padx=self.px(22), pady=self.px((0, 18)))
+        self.side_note.pack(anchor='w', padx=self.px(22), pady=self.px((0, 18)))
 
         right = tk.Frame(self.root, bg=PANEL)
         right.pack(side='left', fill='both', expand=True)
@@ -1589,6 +1620,7 @@ class Launcher:
         self.build_game()
         self.build_controls()
         self.build_mods_page()
+        self.build_trophies()
         self.build_advanced()
         self.root.bind_all('<MouseWheel>', self.wheel)
         if not WINDOWS:  # X11 (Tk 8.6): the wheel arrives as buttons 4 and 5; on Windows those are side buttons
@@ -1631,7 +1663,6 @@ class Launcher:
         # Left: display and frame rate; right: Aspect ratio above the Render resolution it filters.
         items = ((0, 0, _('Display mode'), 'display_mode', DISPLAY_MODES),
                  (1, 0, _('Frame rate limit'), 'fps_limit', FPS_LIMITS),
-                 (2, 0, _('Engine frame rate'), 'engine_fps', ENGINE_FPS_CHOICES),
                  (0, 2, _('Aspect ratio'), None, self.aspect_options),
                  (1, 2, _('Render resolution'), 'render_resolution', self.aspect_resolution_options))
         for row, c, title, key, options in items:
@@ -1741,11 +1772,9 @@ class Launcher:
         f = self.scrolled_page('performance', _('Performance'), _('Frame rate and speed options.'))
         self.section(f, _('Frame rate', 'Частота кадров'), top=4)
         self.row(f, _('Frame rate limit'), self.choice(f, 'fps_limit', 'ini', FPS_LIMITS),
-                 _('The engine frame rate (below) is the highest it can go.'))
+                 _('The game runs at up to 60 FPS.'))
         self.row(f, _('Frames queued'), self.choice(f, 'frames_queued', 'ini', FRAMES_QUEUED),
                  _('1 is the lowest input latency; more can raise FPS when the graphics card is the limit.'))
-        self.row(f, _('Engine frame rate'), self.choice(f, 'engine_fps', 'ini', ENGINE_FPS_CHOICES),
-                 _('The highest frame rate the game itself runs at (a game patch).'))
         self.row(f, _('Aspect ratio'), self.choice(f, None, None, self.aspect_options, var=self.aspect_var()),
                  _('Shows the render resolutions of this shape only.'))
         self.row(f, _('Render resolution'), self.choice(f, 'render_resolution', 'ini', self.aspect_resolution_options),
@@ -2239,6 +2268,127 @@ class Launcher:
             if not tools[name]:
                 box.configure(state='disabled')
 
+    # ---- trophies --------------------------------------------------------------------------------
+    def trophy_user_dir(self):
+        return Path(self.var('user_dir', 'app').get() or DATA_DIR / 'user')
+
+    def build_trophies(self):
+        f = self.scrolled_page('trophies', _('Trophies'),
+                               _('Trophies the game unlocks while you play; kept with your saves.'))
+        self.trophy_filter, self.trophy_state, self.trophy_icons = 'all', None, {}
+        self.trophy_icon_source = None
+        self.trophy_body = self.ttk.Frame(f)
+        self.trophy_body.grid(row=self.next_row(f), column=0, columnspan=2, sticky='we')
+        self.trophy_body.columnconfigure(1, weight=1)
+
+    def load_trophy_icons(self):
+        """PhotoImages of the game's trophy icons (earned and greyed), from its trophy00.trp."""
+        folder = self.meta_dir()
+        trp = Path(folder) / 'sce_sys' / 'trophy' / 'trophy00.trp' if folder else None
+        if trp == self.trophy_icon_source:
+            return
+        self.trophy_icon_source, self.trophy_icons = trp, {}
+        try:
+            import io
+            from PIL import Image, ImageEnhance, ImageOps, ImageTk
+            files = trophies.trp_files(trp)
+        except (ImportError, OSError, ValueError, TypeError):
+            return
+        size = self.px(56)
+        for trophy, *_rest in trophies.TROPHIES:
+            blob = files.get(trophies.icon_name(trophy))
+            if not blob:
+                continue
+            try:
+                with Image.open(io.BytesIO(blob)) as image:
+                    image = image.convert('RGB').resize((size, size), Image.LANCZOS)
+                    locked = ImageEnhance.Brightness(ImageOps.grayscale(image).convert('RGB')).enhance(0.45)
+                    self.trophy_icons[trophy] = (ImageTk.PhotoImage(image), ImageTk.PhotoImage(locked))
+            except OSError:
+                continue
+
+    def refresh_trophies(self):
+        unlocked = trophies.read_log(self.trophy_user_dir() / trophies.LOG_NAME)
+        state = (tuple(sorted(unlocked.items())), self.trophy_filter, str(self.meta_dir()))
+        if state == self.trophy_state:
+            return
+        self.trophy_state = state
+        self.load_trophy_icons()
+        tk, ttk, body = self.tk, self.ttk, self.trophy_body
+        for child in body.winfo_children():
+            child.destroy()
+        known = trophies.TROPHIES
+        earned = [t for t in known if t[0] in unlocked]
+        head = tk.Frame(body, bg=PANEL)
+        head.grid(row=0, column=0, columnspan=2, sticky='we', pady=self.px((4, 10)))
+        percent = round(100 * len(earned) / len(known)) if known else 0
+        tk.Label(head, text=_('{} of {} trophies earned').format(len(earned), len(known)), bg=PANEL, fg=TEXT,
+                 font=self.heading_font(16)).pack(side='left')
+        tk.Label(head, text=f'  {percent}%', bg=PANEL, fg=ACCENT_HI, font=self.heading_font(16)).pack(side='left')
+        bar = tk.Canvas(body, height=self.px(8), bg=CARD, highlightthickness=0, bd=0)
+        bar.grid(row=1, column=0, columnspan=2, sticky='we')
+        bar.bind('<Configure>', lambda e, p=percent: (e.widget.delete('all'), e.widget.create_rectangle(
+            0, 0, e.width * p / 100, e.height, fill=ACCENT, outline='')))
+        grades = tk.Frame(body, bg=PANEL)
+        grades.grid(row=2, column=0, columnspan=2, sticky='w', pady=self.px((10, 4)))
+        for grade in trophies.GRADES:
+            total = sum(1 for t in known if t[1] == grade)
+            got = sum(1 for t in earned if t[1] == grade)
+            tk.Label(grades, text='●', bg=PANEL, fg=TROPHY_COLORS[grade], font=self.font(UI_FONT, 12)).pack(side='left')
+            tk.Label(grades, text=f'{_(GRADE_NAMES[grade])} {got}/{total}', bg=PANEL, fg=TEXT,
+                     font=self.font(UI_FONT, 10)).pack(side='left', padx=self.px((2, 16)))
+        filters = tk.Frame(body, bg=PANEL)
+        filters.grid(row=3, column=0, columnspan=2, sticky='w', pady=self.px((6, 12)))
+        for name, label in (('all', _('All')), ('earned', _('Earned')), ('locked', _('Locked'))):
+            on = name == self.trophy_filter
+            item = tk.Label(filters, text=label, bg=ACCENT if on else CARD, fg=ON_ACCENT if on else TEXT,
+                            font=self.font(UI_FONT, 10, 'bold' if on else 'normal'), padx=self.px(12),
+                            pady=self.px(4), cursor='hand2')
+            item.pack(side='left', padx=self.px((0, 6)))
+            item.bind('<Button-1>', lambda _e, n=name: self.set_trophy_filter(n))
+        show = {'all': lambda t: True, 'earned': lambda t: t[0] in unlocked,
+                'locked': lambda t: t[0] not in unlocked}[self.trophy_filter]
+        row = 4
+        for trophy, grade, *_english in known:
+            name, text = trophies.text(trophy, LANG)
+            if not show((trophy,)):
+                continue
+            when = unlocked.get(trophy)
+            card = tk.Frame(body, bg=CARD, highlightthickness=self.px(1),
+                            highlightbackground=TROPHY_COLORS[grade] if when else LINE)
+            card.grid(row=row, column=0, columnspan=2, sticky='we', pady=self.px((0, 6)))
+            card.columnconfigure(1, weight=1)
+            icons = self.trophy_icons.get(trophy)
+            if icons:
+                tk.Label(card, image=icons[0] if when else icons[1], bg=CARD).grid(
+                    row=0, column=0, rowspan=2, padx=self.px(10), pady=self.px(8))
+            tk.Label(card, text=name, bg=CARD, fg=TEXT if when else MUTED, font=self.font(UI_FONT, 11, 'bold'),
+                     anchor='w').grid(row=0, column=1, sticky='w', pady=self.px((8, 0)))
+            tk.Label(card, text=text, bg=CARD, fg=MUTED, font=self.font(UI_FONT, 9), anchor='w', justify='left',
+                     wraplength=self.px(520)).grid(row=1, column=1, sticky='w', pady=self.px((0, 8)))
+            side = tk.Frame(card, bg=CARD)
+            side.grid(row=0, column=2, rowspan=2, padx=self.px(12))
+            tk.Label(side, text=_(GRADE_NAMES[grade]), bg=CARD, fg=TROPHY_COLORS[grade],
+                     font=self.font(UI_FONT, 9, 'bold')).pack(anchor='e')
+            if when:
+                tk.Label(side, text=time.strftime('%Y-%m-%d', time.localtime(when)), bg=CARD, fg=MUTED,
+                         font=self.font(UI_FONT, 9)).pack(anchor='e')
+            row += 1
+        if row == 4:
+            tk.Label(body, text=_('No trophies yet. They appear here as soon as the game unlocks them.')
+                     if self.trophy_filter == 'earned' else _('Every trophy is earned.'), bg=PANEL, fg=MUTED,
+                     font=self.font(UI_FONT, 10)).grid(row=row, column=0, columnspan=2, sticky='w')
+
+    def set_trophy_filter(self, name):
+        self.trophy_filter = name
+        self.refresh_trophies()
+
+    def poll_trophies(self):
+        """While the page is open: new unlocks appear without leaving it."""
+        if self.current_page == 'trophies':
+            self.refresh_trophies()
+        self.root.after(3000, self.poll_trophies)
+
     def build_advanced(self):
         tk, ttk = self.tk, self.ttk
         f = self.scrolled_page('advanced', _('Advanced', 'Дополнительно'),
@@ -2326,12 +2476,59 @@ class Launcher:
         self.log.pack(side='left', fill='both', expand=True)
 
     # ---- state -------------------------------------------------------------------------------
+    def update_side_logo(self):
+        """The sidebar's head: the game's logo (launcher/logo.png, else the emblem cut from the game's
+        icon0.png) with the neon "PORT PC" right under it, drawn as one picture. Without a logo the
+        title text stays and the sign sits under it; without Pillow both are text."""
+        icon = Path(self.meta_dir()) / 'sce_sys' / 'icon0.png' if self.meta_dir() else None
+        source = LOGO_FILE if LOGO_FILE.is_file() else icon
+        if source == self.side_logo_source and self.side_logo_image:
+            return
+        self.side_logo_source, self.side_logo_image, self.side_brand_image = source, None, None
+        try:
+            from PIL import Image, ImageTk
+        except ImportError:
+            return
+        sign = neon_text('PORT PC', BRAND_FONT_FILE, self.px(22), ACCENT_HI) if BRAND_LOADED else None
+        try:
+            if source == LOGO_FILE:
+                with Image.open(LOGO_FILE) as image:
+                    art = image.convert('RGBA')
+            elif source:
+                art = cut_emblem(icon, logo_background)
+            else:
+                art = None
+        except (OSError, TypeError, ValueError):
+            art = None
+        if art is None:
+            self.side_title.configure(image='')
+            if sign:
+                plate = Image.new('RGBA', sign.size, BG)
+                plate.alpha_composite(sign)
+                self.side_brand_image = ImageTk.PhotoImage(plate.convert('RGB'))
+                self.side_brand.configure(image=self.side_brand_image, text='')
+            self.side_brand.pack()
+            return
+        width, tallest = self.px(186), self.px(150)
+        scale = min(width / art.width, tallest / art.height)
+        art = art.resize((round(art.width * scale), round(art.height * scale)), Image.LANCZOS)
+        overlap = sign.height // 4 if sign else 0
+        height = art.height + (sign.height - overlap if sign else 0)
+        plate = Image.new('RGBA', (width, height), BG)
+        plate.alpha_composite(art, ((width - art.width) // 2, 0))
+        if sign:
+            plate.alpha_composite(sign, ((width - sign.width) // 2, art.height - overlap))
+        self.side_logo_image = ImageTk.PhotoImage(plate.convert('RGB'))
+        self.side_title.configure(image=self.side_logo_image, text='')
+        self.side_brand.pack_forget()
+
     def game_changed(self):
         folder = self.meta_dir()
         info = game_info(folder)
         title = info[0] if info else APP_NAME
         self.root.title(f'{title} (PC)')
         self.side_title.configure(text=title.upper())
+        self.update_side_logo()
         if self.current_page == 'game':
             self.refresh_game_patches()
         self.banner_source = None
@@ -3185,6 +3382,107 @@ def play_without_window(settings):
         return process.wait()
 
 
+def cut_emblem(icon, is_background):
+    """The emblem of icon0.png (art, logo and all) without its backdrop, as a Pillow RGBA image
+    cropped to it: the backdrop is flooded in from the edges (pixels `is_background` accepts),
+    loose sparkles are dropped (only the largest piece stays) and holes inside it are filled.
+    Kept in CONFIG_DIR/emblem-<size>-<mtime>.png, so it is cut once per icon."""
+    from collections import deque
+    from PIL import Image, ImageDraw, ImageFilter
+    info = Path(icon).stat()
+    cache = CONFIG_DIR / f'emblem-{info.st_size}-{int(info.st_mtime)}.png'
+    try:
+        with Image.open(cache) as cached:
+            return cached.convert('RGBA')
+    except OSError:
+        pass
+    with Image.open(icon) as source:
+        image = source.convert('RGB').resize((512, 512), Image.LANCZOS)
+    w, h = image.size
+    px = image.load()
+    background = bytearray(w * h)
+    queue = deque([(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for y in range(h) for x in (0, w - 1)])
+    while queue:
+        x, y = queue.popleft()
+        i = y * w + x
+        if background[i] or not is_background(*px[x, y]):
+            continue
+        background[i] = 1
+        queue.extend(p for p in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)) if 0 <= p[0] < w and 0 <= p[1] < h)
+    piece, best, best_size, current = [0] * (w * h), 0, 0, 0
+    for start in range(w * h):
+        if background[start] or piece[start]:
+            continue
+        current += 1
+        count, stack = 0, [start]
+        piece[start] = current
+        while stack:
+            i = stack.pop()
+            count += 1
+            x = i % w
+            for j in (i - 1 if x else -1, i + 1 if x < w - 1 else -1, i - w, i + w):
+                if 0 <= j < w * h and not background[j] and not piece[j]:
+                    piece[j] = current
+                    stack.append(j)
+        if count > best_size:
+            best, best_size = current, count
+    # Small pieces right next to the emblem (neon dots standing over the backdrop) belong to it.
+    main = Image.new('L', (w, h), 0)
+    main.putdata([255 if p == best else 0 for p in piece])
+    near = main.filter(ImageFilter.MaxFilter(13)).getdata()
+    keep = {best} | {p for p, n in zip(piece, near) if p and n}
+    mask = Image.new('L', (w, h), 0)
+    mask.putdata([255 if p in keep else 0 for p in piece])
+    outside = Image.new('L', (w + 2, h + 2), 0)
+    outside.paste(mask, (1, 1))
+    ImageDraw.floodfill(outside, (0, 0), 128)
+    mask = outside.crop((1, 1, w + 1, h + 1)).point(lambda v: 0 if v == 128 else 255)
+    mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.2))
+    art = image.convert('RGBA')
+    art.putalpha(mask)
+    art = art.crop(mask.point(lambda v: 255 if v > 40 else 0).getbbox())
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        for old in CONFIG_DIR.glob('emblem-*.png'):
+            old.unlink()
+        art.save(cache)
+    except OSError:
+        pass
+    return art
+
+
+def neon_text(text, font_file, size, color):
+    """`text` drawn like a neon sign (a light core, a coloured tube and its glow) as a Pillow RGBA
+    image whose glow fades out inside its margins; None without the font."""
+    from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageFont
+    try:
+        face = ImageFont.truetype(str(font_file), size)
+    except OSError:
+        return None
+    rgb = ImageColor.getrgb(color)
+    core = tuple(round(c + (255 - c) * 0.65) for c in rgb)
+    stroke = max(1, size // 14)
+    left, top, right, bottom = face.getbbox(text, stroke_width=stroke)
+    pad = size
+    w, h = right - left + 2 * pad, bottom - top + 2 * pad
+    at = (pad - left, pad - top)
+    shape = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(shape).text(at, text, font=face, fill=255, stroke_width=stroke, stroke_fill=255)
+    glow = Image.new('L', (w, h), 0)
+    for radius, gain in ((size * 0.30, 1.1), (size * 0.12, 1.4)):
+        blurred = shape.filter(ImageFilter.GaussianBlur(radius)).point(lambda v, k=gain: min(255, int(v * k)))
+        glow = ImageChops.lighter(glow, blurred)
+    image = Image.new('RGBA', (w, h), rgb + (0,))
+    image.putalpha(glow)
+    tube = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(tube).text(at, text, font=face, fill=0, stroke_width=stroke, stroke_fill=255)
+    image.paste(Image.new('RGBA', (w, h), rgb + (255,)), (0, 0), tube)
+    inner = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(inner).text(at, text, font=face, fill=255)
+    image.paste(Image.new('RGBA', (w, h), core + (255,)), (0, 0), inner)
+    return image.crop(image.getchannel('A').point(lambda v: 255 if v > 6 else 0).getbbox())
+
+
 def version_tuple(text):
     return tuple(int(number) for number in re.findall(r'\d+', text or ''))
 
@@ -3232,7 +3530,7 @@ def install_update(target, wait_pid):
 
 
 def main():
-    global LANG, FONT_LOADED
+    global LANG, FONT_LOADED, BRAND_LOADED
     args = sys.argv[1:]
     if args and args[0] in ('--run', '--script'):
         sys.exit(run_role(args))
@@ -3254,6 +3552,7 @@ def main():
         except (AttributeError, OSError):
             pass
     FONT_LOADED = register_font(FONT_FILE)  # titles keep the usual serif without it
+    BRAND_LOADED = register_font(BRAND_FONT_FILE)
     import tkinter as tk
     from tkinter import filedialog, font, messagebox, ttk
     root = tk.Tk() if WINDOWS else tk.Tk(className='p4d')

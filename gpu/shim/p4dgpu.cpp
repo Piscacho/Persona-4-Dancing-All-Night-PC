@@ -399,6 +399,10 @@ extern "C" int p4dgpu_choice_begin(const char* title, const char* const* items, 
     return 1;
 }
 
+extern "C" void p4dgpu_trophy_unlocked(int id, char grade, const char* name) {
+    P4dOverlay::ShowTrophy(id, grade, name ? name : "");
+}
+
 extern "C" int p4dgpu_choice_poll(void) {
     return P4dOverlay::PollChoice();
 }

@@ -4,10 +4,10 @@
 #include "../src/runtime_pad.c"
 
 int p4dgpu_overlay_captures_input(void) { return 0; }
+void p4dgpu_engine_fps_cycle(void) {}
 int p4dgpu_vibration_percent(void) { return 100; }
 static int pause_keys;
 void p4dgpu_mouse_pause_key(void) { ++pause_keys; }
-void p4dgpu_engine_fps_cycle(void) {}
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
@@ -25,22 +25,32 @@ int main(void) {
     assert(apply_button_map(&keys,NULL,true)==0 && apply_button_map(&keys,"",true)==0);
     assert(keys.count==key_map.count);
 
-    /* Swap: Q presses Cross, Space presses Triangle; Space no longer presses Cross. */
+    /* Persona 4 Dancing's defaults: W A S D and the arrows on the d-pad, I L K J on the face
+     * buttons, Q / E / Space the scratch. */
+    assert(pressed_by(&key_map,SDL_SCANCODE_W)==BTN_UP && pressed_by(&key_map,SDL_SCANCODE_UP)==BTN_UP);
+    assert(pressed_by(&key_map,SDL_SCANCODE_A)==BTN_LEFT && pressed_by(&key_map,SDL_SCANCODE_LEFT)==BTN_LEFT);
+    assert(pressed_by(&key_map,SDL_SCANCODE_S)==BTN_DOWN && pressed_by(&key_map,SDL_SCANCODE_D)==BTN_RIGHT);
+    assert(pressed_by(&key_map,SDL_SCANCODE_I)==BTN_TRIANGLE && pressed_by(&key_map,SDL_SCANCODE_L)==BTN_CIRCLE);
+    assert(pressed_by(&key_map,SDL_SCANCODE_K)==BTN_CROSS && pressed_by(&key_map,SDL_SCANCODE_J)==BTN_SQUARE);
+    assert(pressed_by(&key_map,SDL_SCANCODE_Q)==BTN_L1 && pressed_by(&key_map,SDL_SCANCODE_E)==BTN_R1);
+    assert(pressed_by(&key_map,SDL_SCANCODE_SPACE)==BTN_R1);
+
+    /* Swap: Q presses Cross, Space presses Triangle; K no longer presses Cross. */
     assert(apply_button_map(&keys," cross = Q , triangle=Space",true)==2);
-    assert(pressed_by(&keys,SDL_SCANCODE_Q)==BTN_CROSS);
-    assert(pressed_by(&keys,SDL_SCANCODE_SPACE)==BTN_TRIANGLE);
-    assert(pressed_by(&keys,SDL_SCANCODE_E)==BTN_SQUARE);
+    assert(pressed_by(&keys,SDL_SCANCODE_Q)==(BTN_CROSS|BTN_L1));
+    assert(pressed_by(&keys,SDL_SCANCODE_SPACE)==(BTN_TRIANGLE|BTN_R1));
+    assert(pressed_by(&keys,SDL_SCANCODE_K)==0 && pressed_by(&keys,SDL_SCANCODE_J)==BTN_SQUARE);
 
     /* Names with spaces, any case; the last entry for a button wins. */
     ButtonMap again=key_map;
     assert(apply_button_map(&again,"CIRCLE=left shift,circle=Left Ctrl",true)==2);
     assert(pressed_by(&again,SDL_SCANCODE_LCTRL)==BTN_CIRCLE);
-    assert(pressed_by(&again,SDL_SCANCODE_LSHIFT)==0);
+    assert(pressed_by(&again,SDL_SCANCODE_LSHIFT)==0 && pressed_by(&again,SDL_SCANCODE_L)==0);
 
     /* Bad entries are skipped and leave the defaults alone. */
     ButtonMap bad=key_map;
     assert(apply_button_map(&bad,"bogus=Q,cross=NotAKey,circle,=Q,square=,,",true)==0);
-    assert(bad.count==key_map.count && pressed_by(&bad,SDL_SCANCODE_SPACE)==BTN_CROSS);
+    assert(bad.count==key_map.count && pressed_by(&bad,SDL_SCANCODE_K)==BTN_CROSS);
 
     /* Gamepad: Xbox layout swap; 'touchpad' is the left click, Back stays the right click and
      * the real touchpad click keeps its fingers. */
@@ -70,7 +80,7 @@ int main(void) {
     ButtonMap mouse=key_map;
     assert(apply_button_map(&mouse,"square=Mouse Left,triangle=mouse right,circle=Mouse Middle,"
                                    "l1=Wheel Up,r1=wheel down,l2=Mouse Back,r2=Mouse Forward",true)==7);
-    assert(pressed_by(&mouse,MOUSE_LEFT)==BTN_SQUARE && pressed_by(&mouse,SDL_SCANCODE_E)==0);
+    assert(pressed_by(&mouse,MOUSE_LEFT)==BTN_SQUARE && pressed_by(&mouse,SDL_SCANCODE_J)==0);
     assert(pressed_by(&mouse,MOUSE_RIGHT)==BTN_TRIANGLE && pressed_by(&mouse,MOUSE_MIDDLE)==BTN_CIRCLE);
     assert(pressed_by(&mouse,WHEEL_UP)==BTN_L1 && pressed_by(&mouse,WHEEL_DOWN)==BTN_R1);
     assert(pressed_by(&mouse,MOUSE_BACK)==BTN_L2 && pressed_by(&mouse,MOUSE_FORWARD)==BTN_R2);
@@ -103,6 +113,10 @@ int main(void) {
     assert(SDL_GetAtomicInt(&wheel_ticks[1])==WHEEL_MAX_PENDING);
     drop_wheel();
     assert(SDL_GetAtomicInt(&wheel_ticks[1])==0 && !wheel_held(1,t1));
+    /* The base port's actions are gone: their names are no buttons. */
+    ButtonMap gone=key_map;
+    assert(apply_button_map(&gone,"rage=V,grab=C,dodge=Left Alt",true)==0 && gone.count==key_map.count);
+
     /* The pause key tells the window once per press; L1 + touchpad right (the left click) does not. */
     PadData menu={0};
     menu.buttons=CLICK_RIGHT; note_pause_key(&menu); note_pause_key(&menu);

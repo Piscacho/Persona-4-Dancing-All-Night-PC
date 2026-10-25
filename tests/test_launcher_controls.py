@@ -78,7 +78,7 @@ class ControlMapTest(unittest.TestCase):
 
     def test_changed_buttons_in_table_order(self):
         controls = {'key': {'circle': ' Left Shift ', 'cross': 'Q', 'square': ''}, 'pad': {'cross': 'b'}}
-        self.assertEqual(launcher.control_map(controls, 'key'), 'cross=Q,circle=Left Shift')
+        self.assertEqual(launcher.control_map(controls, 'key'), 'circle=Left Shift,cross=Q')
         self.assertEqual(launcher.control_map(controls, 'pad'), 'cross=b')
 
     def test_rejects_separators_unknown_buttons_and_bad_shapes(self):
@@ -89,7 +89,7 @@ class ControlMapTest(unittest.TestCase):
 
     def test_only_changes_from_the_defaults_are_kept(self):
         keys = {row[0]: launcher.default_input(row, 'key') for row in launcher.table_rows('key')}
-        keys.update(cross='q', circle='LEFT SHIFT', square='  ')
+        keys.update(cross='q', circle='l', square='  ')
         self.assertEqual(launcher.control_changes(keys, 'key'), {'cross': 'q'})
         pads = {b: p or '' for b, _k, p in launcher.CONTROLS}
         pads.update(cross='b', l2='a')
@@ -163,7 +163,7 @@ class ControlMapTest(unittest.TestCase):
     def test_keyboard_defaults_are_the_games_own_keys(self):
         self.assertEqual(launcher.keyboard_map({}), '')
         controls = {'key': {'square': 'Wheel Up', 'cross': 'Q', 'triangle': 'E'}}
-        self.assertEqual(launcher.keyboard_map(controls), 'cross=Q,square=Wheel Up,triangle=E')
+        self.assertEqual(launcher.keyboard_map(controls), 'triangle=E,cross=Q,square=Wheel Up')
         values = {row[0]: launcher.default_input(row, 'key') for row in launcher.table_rows('key')}
         self.assertEqual(launcher.control_changes(values, 'key'), {})
         values['square'] = 'R'
@@ -260,7 +260,7 @@ class ControlMapTest(unittest.TestCase):
 
     def test_graphics_defaults_match_the_game(self):
         d = launcher.INI_DEFAULTS
-        self.assertEqual((d['display_mode'], d['vsync'], d['fps_limit'], d['engine_fps']), ('windowed', '1', '0', '120'))
+        self.assertEqual((d['display_mode'], d['vsync'], d['fps_limit'], d['engine_fps']), ('windowed', '1', '0', '60'))
         self.assertEqual([v for v, _t in launcher.FPS_LIMITS], ['30', '60', '100', '120', '240', '0'])
         self.assertEqual(d['frames_queued'], '1')
         self.assertEqual([v for v, _t in launcher.FRAMES_QUEUED], ['1', '2', '0'])

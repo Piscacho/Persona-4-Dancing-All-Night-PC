@@ -39,6 +39,9 @@ bool Visible();
 /// Any thread: a short message in the lower right corner (a saved screenshot).
 void ShowNotice(const std::string& text, int milliseconds = 3000);
 
+/// Any thread: a trophy notice with its icon (grade 'p', 'g', 's' or 'b'), queued after others.
+void ShowTrophy(int id, char grade, const std::string& name);
+
 /// Any thread (R3 + L1 + R1, F9): the next engine frame rate (60, 100, 120, 240), said on screen.
 void CycleEngineFps();
 

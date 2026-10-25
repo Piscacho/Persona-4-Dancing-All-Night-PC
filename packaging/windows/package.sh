@@ -43,7 +43,7 @@ rm -rf -- out/stage
 mkdir -p "$dest/bin" "$dest/launcher"
 cp -r "out/pyi-dist/Persona 4 Dancing All Night/." "$dest/"
 llvm-strip -o "$dest/Play Persona 4 Dancing All Night.exe" out/p4d-play.exe
-cp launcher/p4d.ico launcher/p4d.png "$dest/launcher/"
+cp launcher/p4d.ico launcher/p4d.png launcher/brand.ttf launcher/brand-OFL.txt launcher/logo.png "$dest/launcher/"
 # The executables without debug information (out/ keeps the symbols for crash reports).
 for exe in p4d-probe.exe p4d-gpu-capabilities.exe; do
     llvm-strip --strip-debug -o "$dest/bin/$exe" "out/$exe"

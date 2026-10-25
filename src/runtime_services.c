@@ -444,7 +444,66 @@ static ABI int32_t ime_result(uint32_t *result) {
 }
 static ABI int32_t ime_term(void) { memset(&ime,0,sizeof(ime)); return 0; }
 
-/* ---- Trophies: accepted locally, recorded in the log ---- */
+/* ---- Trophies: kept in <user>/trophies.log ("id unix-time" per line) ----
+ * P4D_TROPHY_LIST names the file run.py writes from scripts/trophies.py ("id<TAB>grade<TAB>name"
+ * per line). Each new unlock is appended to the log and shown in game; the platinum (id 0) is
+ * awarded here once every other trophy is unlocked, as the console does. The game asks which
+ * trophies it already has (sceNpTrophyGetTrophyUnlockState) and so does not unlock them again. */
+#define TROPHY_MAX 128
+#define TROPHY_PLATINUM 0
+static struct {
+    int loaded, count;
+    char grade[TROPHY_MAX];                 /* 'p' 'g' 's' 'b'; 0: unknown id */
+    char name[TROPHY_MAX][96];
+    unsigned char unlocked[TROPHY_MAX];
+} trophies;
+static void trophy_log_path(char *out, size_t size) {
+    snprintf(out,size,"%s/trophies.log",runtime_file_user_dir());
+}
+static void trophy_load(void) {
+    if (trophies.loaded) return;
+    trophies.loaded=1;
+    const char *list=getenv("P4D_TROPHY_LIST");
+    FILE *f=list && *list ? fopen(list,"r") : NULL;
+    if (f) {
+        char line[256];
+        while (fgets(line,sizeof(line),f)) {
+            char *grade=strchr(line,'\t'); if (!grade) continue;
+            char *name=strchr(grade+1,'\t'); if (!name) continue;
+            const int id=atoi(line);
+            if (id<0 || id>=TROPHY_MAX) continue;
+            name[strcspn(name,"\r\n")]=0;
+            trophies.grade[id]=grade[1];
+            snprintf(trophies.name[id],sizeof(trophies.name[id]),"%s",name+1);
+            if (id+1>trophies.count) trophies.count=id+1;
+        }
+        fclose(f);
+    }
+    char path[700]; trophy_log_path(path,sizeof(path));
+    if ((f=fopen(path,"r"))) {
+        int id; long long when;
+        while (fscanf(f,"%d %lld",&id,&when)==2)
+            if (id>=0 && id<TROPHY_MAX) trophies.unlocked[id]=1;
+        fclose(f);
+    }
+}
+/* Records one trophy; 1 when it is new. Called with `lock` held. */
+static int trophy_record(int id) {
+    if (id<0 || id>=TROPHY_MAX || trophies.unlocked[id]) return 0;
+    trophies.unlocked[id]=1;
+    char path[700]; trophy_log_path(path,sizeof(path));
+    FILE *f=fopen(path,"a");
+    if (f) { fprintf(f,"%d %lld\n",id,(long long)time(NULL)); fclose(f); }
+    printf("Runtime: trophy %d unlocked%s%s\n",id,trophies.name[id][0] ? ": " : "",trophies.name[id]);
+    p4dgpu_trophy_unlocked(id,trophies.grade[id] ? trophies.grade[id] : 'b',trophies.name[id]);
+    return 1;
+}
+static int trophy_platinum_due(void) {
+    if (!trophies.count || trophies.grade[TROPHY_PLATINUM]!='p' || trophies.unlocked[TROPHY_PLATINUM]) return 0;
+    for (int i=0;i<trophies.count;++i)
+        if (i!=TROPHY_PLATINUM && trophies.grade[i] && !trophies.unlocked[i]) return 0;
+    return 1;
+}
 static ABI int32_t trophy_context(int32_t *ctx,int32_t user,uint32_t label,uint64_t options) {
     (void)user; (void)label; (void)options;
     if (!ctx) return TROPHY_INVALID;
@@ -454,8 +513,13 @@ static ABI int32_t trophy_handle(int32_t *handle) { if (!handle) return TROPHY_I
 static ABI int32_t trophy_register(int32_t ctx,int32_t handle,uint64_t options) { (void)ctx; (void)handle; (void)options; return 0; }
 static ABI int32_t trophy_unlock(int32_t ctx,int32_t handle,int32_t id,int32_t *platinum) {
     (void)ctx; (void)handle;
-    printf("Runtime: trophy %d unlocked\n",id);
     if (platinum) *platinum=-1;
+    if (id<0 || id>=TROPHY_MAX) return TROPHY_INVALID;
+    pthread_mutex_lock(&lock);
+    trophy_load();
+    if (trophy_record(id) && trophy_platinum_due() && trophy_record(TROPHY_PLATINUM) && platinum)
+        *platinum=TROPHY_PLATINUM;
+    pthread_mutex_unlock(&lock);
     return 0;
 }
 static ABI int32_t trophy_game_info(int32_t ctx,int32_t handle,void *details,void *data) {
@@ -467,11 +531,16 @@ static ABI int32_t trophy_game_info(int32_t ctx,int32_t handle,void *details,voi
 static ABI int32_t trophy_info(int32_t ctx,int32_t handle,int32_t id,void *details,void *data) {
     (void)id; return trophy_game_info(ctx,handle,details,data);
 }
-/* Nothing is unlocked on this console: an empty 128-trophy flag set. */
+/* The trophies already unlocked, as the 128-bit flag set of the console (bit id of word id/32). */
 static ABI int32_t trophy_unlock_state(int32_t ctx,int32_t handle,uint32_t *flags,uint32_t *count) {
     if (!flags || !count) return TROPHY_INVALID;
     if (ctx<=0 || handle<=0) return TROPHY_INVALID;
-    memset(flags,0,16); *count=0;
+    memset(flags,0,16);
+    pthread_mutex_lock(&lock);
+    trophy_load();
+    for (int i=0;i<TROPHY_MAX;++i) if (trophies.unlocked[i]) flags[i>>5]|=1u<<(i&31);
+    *count=(uint32_t)trophies.count;
+    pthread_mutex_unlock(&lock);
     return 0;
 }
 static ABI int32_t trophy_release(int32_t id) { return id>0 ? 0 : TROPHY_INVALID; }

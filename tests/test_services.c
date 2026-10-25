@@ -2,6 +2,10 @@
 #undef NDEBUG /* the checks are asserts; release builds define NDEBUG */
 #include "../src/runtime_services.c"
 #include <assert.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *nid) { (void)table; (void)count; (void)nid; return 0; }
 int p4dgpu_text_input_begin(const char *text, const char *prompt) { (void)text; (void)prompt; return 0; }
@@ -12,6 +16,43 @@ int64_t runtime_file_close(int fd) { (void)fd; return 0; }
 static int choice_next=-1;
 int p4dgpu_choice_begin(const char *title, const char *const *items, const char *const *images, int count, int focus) { (void)title; (void)items; (void)images; (void)focus; return count>0; }
 int p4dgpu_choice_poll(void) { return choice_next; }
+static int trophy_notices;
+void p4dgpu_trophy_unlocked(int id, char grade, const char *name) { (void)id; (void)grade; (void)name; ++trophy_notices; }
+static char test_user_dir[512];
+const char *runtime_file_user_dir(void) { return test_user_dir; }
+
+/* Trophies: an unlock is kept in trophies.log, reported to the game and not repeated; the
+ * platinum follows the last other trophy. */
+static void test_trophies(void) {
+    const char *tmp=getenv("TEMP") ? getenv("TEMP") : "/tmp";
+    snprintf(test_user_dir,sizeof(test_user_dir),"%s/p4d-trophy-test-%d",tmp,(int)time(NULL));
+#ifdef _WIN32
+    _mkdir(test_user_dir);
+#else
+    mkdir(test_user_dir,0755);
+#endif
+    char list[600]; snprintf(list,sizeof(list),"%s/trophies.txt",test_user_dir);
+    FILE *f=fopen(list,"w"); assert(f);
+    fputs("0\tplatinum\tAll\n1\tbronze\tOne\n2\tgold\tTwo\n",f); fclose(f);
+#ifdef _WIN32
+    _putenv_s("P4D_TROPHY_LIST",list);
+#else
+    setenv("P4D_TROPHY_LIST",list,1);
+#endif
+    int32_t ctx=0, handle=0, platinum=0; uint32_t flags[4], count=0;
+    assert(trophy_context(&ctx,1,0,0)==0 && trophy_handle(&handle)==0);
+    assert(trophy_unlock_state(ctx,handle,flags,&count)==0 && count==3 && flags[0]==0);
+    assert(trophy_unlock(ctx,handle,1,&platinum)==0 && platinum==-1 && trophy_notices==1);
+    assert(trophy_unlock(ctx,handle,1,&platinum)==0 && trophy_notices==1);   /* not repeated */
+    assert(trophy_unlock(ctx,handle,2,&platinum)==0 && platinum==0 && trophy_notices==3); /* + platinum */
+    assert(trophy_unlock_state(ctx,handle,flags,&count)==0 && flags[0]==0x7);
+    char log[600]; snprintf(log,sizeof(log),"%s/trophies.log",test_user_dir);
+    f=fopen(log,"r"); assert(f);
+    int lines=0, id; long long when;
+    while (fscanf(f,"%d %lld",&id,&when)==2) ++lines;
+    fclose(f);
+    assert(lines==3);
+}
 int runtime_savedata_param(int32_t user, const char *dir, void *param) { (void)user; (void)dir; (void)param; return -1; }
 int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size) { (void)user; (void)dir; (void)out; (void)size; return -1; }
 
@@ -19,6 +60,7 @@ int main(void) {
     unsigned char param[128]={0}, result[64]={0}; /* the game zeroes the pointers it does not want */
     uint32_t value;
 
+    test_trophies();
     /* MsgDialog: a user message finishes with OK; a progress bar runs until closed. */
     assert(msg_init()==0);
     memset(param+56,0,4); param[56]=1;
@@ -76,9 +118,9 @@ int main(void) {
     assert(playgo_todo(handle,&chunk,1)==0 && playgo_todo(handle,NULL,1)==PLAYGO_BAD_POINTER);
     assert(playgo_close(handle)==0 && playgo_close(handle)==PLAYGO_BAD_HANDLE && playgo_terminate()==0);
 
-    /* Trophies: nothing unlocked. */
+    /* Trophies: the set test_trophies unlocked, every other bit clear. */
     uint32_t flags[4]={~0u,~0u,~0u,~0u}, count=7;
-    assert(trophy_unlock_state(1,1,flags,&count)==0 && !flags[0] && !flags[3] && count==0);
+    assert(trophy_unlock_state(1,1,flags,&count)==0 && flags[0]==0x7 && !flags[3] && count==3);
     assert(trophy_unlock_state(1,1,NULL,&count)==TROPHY_INVALID && trophy_release(0)==TROPHY_INVALID);
 
     float ratio=0; assert(safe_area(&ratio)==0 && ratio==1.0f && safe_area(NULL)==SYSTEM_PARAMETER);

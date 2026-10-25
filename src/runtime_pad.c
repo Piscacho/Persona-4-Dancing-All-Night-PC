@@ -1,11 +1,13 @@
 /* libScePad on SDL3 gamepads, with a keyboard fallback. SDL events are pumped
  * by the window thread (gpu/shim/window.cpp); here state is only sampled.
  *
- * Default keyboard layout (P4D_KEY_MAP changes the buttons, see apply_button_map):
- *   WASD left stick, arrow keys right stick, Space Cross, LShift Circle,
- *   E Square, Q Triangle, 1 L1, 3 R1, R L2, F R2, Z L3, C R3,
- *   Enter Options, Tab left touchpad, Backspace right touchpad (pause menu),
- *   IJKL d-pad (I up, K down, J left, L right).
+ * Default keyboard layout for Persona 4 Dancing's notes (P4D_KEY_MAP changes it, see
+ * apply_button_map):
+ *   W A S D and the arrow keys: d-pad (up, left, down, right),
+ *   I Triangle, L Circle, K Cross, J Square,
+ *   Q L1, E R1 and Space R1 (scratch), R L2, F R2, Z L3, C R3,
+ *   Enter Options, Tab left touchpad, Backspace right touchpad.
+ * The keys never move a stick: in these games a stick is the scratch.
  * P4D_KEY_MAP also takes the mouse: Mouse Left, Mouse Right, Mouse Middle, Mouse Back,
  * Mouse Forward, Wheel Up and Wheel Down (see mouse_names). */
 #define _GNU_SOURCE
@@ -150,12 +152,13 @@ static ButtonMap pad_map={{
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT,BTN_LEFT}, {SDL_GAMEPAD_BUTTON_DPAD_RIGHT,BTN_RIGHT},
 },15};
 static ButtonMap key_map={{
-    {SDL_SCANCODE_SPACE,BTN_CROSS}, {SDL_SCANCODE_LSHIFT,BTN_CIRCLE}, {SDL_SCANCODE_E,BTN_SQUARE},
-    {SDL_SCANCODE_Q,BTN_TRIANGLE}, {SDL_SCANCODE_1,BTN_L1}, {SDL_SCANCODE_3,BTN_R1},
+    {SDL_SCANCODE_W,BTN_UP}, {SDL_SCANCODE_A,BTN_LEFT}, {SDL_SCANCODE_S,BTN_DOWN}, {SDL_SCANCODE_D,BTN_RIGHT},
+    {SDL_SCANCODE_UP,BTN_UP}, {SDL_SCANCODE_LEFT,BTN_LEFT}, {SDL_SCANCODE_DOWN,BTN_DOWN}, {SDL_SCANCODE_RIGHT,BTN_RIGHT},
+    {SDL_SCANCODE_I,BTN_TRIANGLE}, {SDL_SCANCODE_L,BTN_CIRCLE}, {SDL_SCANCODE_K,BTN_CROSS}, {SDL_SCANCODE_J,BTN_SQUARE},
+    {SDL_SCANCODE_Q,BTN_L1}, {SDL_SCANCODE_E,BTN_R1}, {SDL_SCANCODE_SPACE,BTN_R1},
     {SDL_SCANCODE_R,BTN_L2}, {SDL_SCANCODE_F,BTN_R2}, {SDL_SCANCODE_Z,BTN_L3}, {SDL_SCANCODE_C,BTN_R3},
     {SDL_SCANCODE_RETURN,BTN_OPTIONS}, {SDL_SCANCODE_TAB,CLICK_LEFT}, {SDL_SCANCODE_BACKSPACE,CLICK_RIGHT},
-    {SDL_SCANCODE_I,BTN_UP}, {SDL_SCANCODE_K,BTN_DOWN}, {SDL_SCANCODE_J,BTN_LEFT}, {SDL_SCANCODE_L,BTN_RIGHT},
-},17};
+},22};
 
 static char *trim(char *text) {
     while (*text==' ' || *text=='\t') ++text;
@@ -289,9 +292,6 @@ static void load_button_maps(void) {
     if (pad || keys) printf("Runtime: pad map: %d gamepad and %d keyboard buttons remapped\n",pad,keys);
 }
 
-static void key_axis(uint8_t *axis, bool negative, bool positive) {
-    if (negative || positive) *axis=(uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0));
-}
 static void sample_host(PadData *d) {
     memset(d,0,sizeof(*d));
     d->left_x=d->left_y=d->right_x=d->right_y=128;
@@ -326,8 +326,7 @@ static void sample_host(PadData *d) {
             }
         }
     }
-    /* The keyboard works with or without a gamepad: its buttons add to the pad's, and a stick
-     * follows the keys only while one of them is held. */
+    /* The keyboard works with or without a gamepad: its buttons add to the pad's. */
     if (!k) return;
     const SDL_MouseButtonFlags mouse=SDL_GetMouseState(NULL,NULL);
     const bool wheel[2]={wheel_held(0,d->timestamp),wheel_held(1,d->timestamp)};
@@ -335,10 +334,6 @@ static void sample_host(PadData *d) {
         if (source_down(key_map.entries[i].source,k,mouse,wheel)) d->buttons|=key_map.entries[i].ps;
     if (d->buttons & BTN_L2) d->l2=255;
     if (d->buttons & BTN_R2) d->r2=255;
-    key_axis(&d->left_x,k[SDL_SCANCODE_A],k[SDL_SCANCODE_D]);
-    key_axis(&d->left_y,k[SDL_SCANCODE_W],k[SDL_SCANCODE_S]);
-    key_axis(&d->right_x,k[SDL_SCANCODE_LEFT],k[SDL_SCANCODE_RIGHT]);
-    key_axis(&d->right_y,k[SDL_SCANCODE_UP],k[SDL_SCANCODE_DOWN]);
 }
 
 /* P4D_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated

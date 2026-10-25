@@ -12,6 +12,7 @@
 #include <mutex>
 #include <vector>
 
+#include <deque>
 #include <SDL3/SDL.h>
 #include "p4d_settings.h"
 #include "p4d_graphics.h"
@@ -80,6 +81,23 @@ std::atomic<int> choice_result{-1}; // -1 open, -2 cancelled, else the chosen in
 // Save pictures: decoded by BeginChoice, made textures on the present thread (null = none).
 // Closed lists' textures wait in choice_retired until the backend has destroyed them.
 std::vector<P4dPng::Image> choice_pictures;
+
+// Trophy notices (src/runtime_services.c through p4dgpu_trophy_unlocked): one at a time in the
+// upper right corner, with the trophy's icon (TROP<id>.PNG in P4D_TROPHY_ICONS).
+struct TrophyToast {
+    int id = 0;
+    char grade = 'b';
+    std::string name;
+};
+constexpr s64 TrophyShowMs = 5000;
+std::mutex trophy_mutex;
+std::deque<TrophyToast> trophy_queue; // trophy_mutex
+std::atomic<bool> trophy_active{false};
+TrophyToast trophy_current;           // imgui thread
+bool trophy_showing = false;
+s64 trophy_until = 0;
+ImTextureData* trophy_texture = nullptr;
+std::vector<ImTextureData*> trophy_retired;
 std::vector<ImTextureData*> choice_textures, choice_retired;
 std::atomic<bool> choice_retiring{false};
 float base_scale = 1.0f;
@@ -740,6 +758,12 @@ void ShowNotice(const std::string& text, int milliseconds) {
     notice_until.store(NowMs() + milliseconds, std::memory_order_relaxed);
 }
 
+void ShowTrophy(int id, char grade, const std::string& name) {
+    std::scoped_lock lock{trophy_mutex};
+    trophy_queue.push_back({id, grade, name});
+    trophy_active = true;
+}
+
 void CycleEngineFps() {
     const int fps = P4dSettings::CycleEngineFps();
     ShowNotice(fps ? "Engine frame rate: " + std::to_string(fps) + " FPS"
@@ -862,6 +886,97 @@ void UpdateChoiceTextures() {
         return true;
     });
     choice_retiring = !choice_retired.empty();
+}
+
+// imgui_mutex held, before NewFrame: the next queued trophy becomes the notice and its icon a
+// texture; an expired notice's texture is freed once the backend is done with it.
+void UpdateTrophyNotice() {
+    const s64 now = NowMs();
+    if (trophy_showing && now >= trophy_until) {
+        trophy_showing = false;
+        if (trophy_texture) {
+            trophy_texture->WantDestroyNextFrame = true;
+            trophy_retired.push_back(trophy_texture);
+            trophy_texture = nullptr;
+        }
+    }
+    std::erase_if(trophy_retired, [](ImTextureData* tex) {
+        if (tex->Status != ImTextureStatus_Destroyed) {
+            return false;
+        }
+        ImGui::UnregisterUserTexture(tex);
+        IM_DELETE(tex);
+        return true;
+    });
+    if (!trophy_showing) {
+        std::scoped_lock lock{trophy_mutex};
+        if (!trophy_queue.empty()) {
+            trophy_current = std::move(trophy_queue.front());
+            trophy_queue.pop_front();
+            trophy_showing = true;
+            trophy_until = now + TrophyShowMs;
+        }
+    }
+    if (trophy_showing && !trophy_texture) {
+        if (const char* dir = std::getenv("P4D_TROPHY_ICONS"); dir && *dir) {
+            char path[1024];
+            std::snprintf(path, sizeof(path), "%s/TROP%03d.PNG", dir, trophy_current.id);
+            P4dPng::Image picture;
+            if (P4dPng::LoadRgba(path, picture) && !picture.rgba.empty()) {
+                trophy_texture = IM_NEW(ImTextureData)();
+                trophy_texture->Create(ImTextureFormat_RGBA32, picture.width, picture.height);
+                std::memcpy(trophy_texture->GetPixels(), picture.rgba.data(), picture.rgba.size());
+                ImGui::RegisterUserTexture(trophy_texture);
+            }
+        }
+    }
+    std::scoped_lock lock{trophy_mutex};
+    trophy_active = trophy_showing || !trophy_queue.empty() || !trophy_retired.empty();
+}
+
+void TrophyNotice() {
+    if (!trophy_showing) {
+        return;
+    }
+    const ImU32 colors[] = {IM_COL32(185, 211, 238, 255), IM_COL32(229, 193, 88, 255),
+                            IM_COL32(200, 200, 205, 255), IM_COL32(196, 138, 90, 255)};
+    // P4D_TROPHY_LANGUAGE (the launcher's language): the heading in Spanish or Portuguese, else English.
+    static const std::string language = [] {
+        const char* value = std::getenv("P4D_TROPHY_LANGUAGE");
+        return std::string(value ? value : "").substr(0, 2);
+    }();
+    static const char* const english[] = {"Platinum trophy earned", "Gold trophy earned", "Silver trophy earned",
+                                           "Bronze trophy earned"};
+    static const char* const spanish[] = {"Trofeo de platino obtenido", "Trofeo de oro obtenido",
+                                           "Trofeo de plata obtenido", "Trofeo de bronce obtenido"};
+    static const char* const portuguese[] = {"Troféu de platina conquistado", "Troféu de ouro conquistado",
+                                              "Troféu de prata conquistado", "Troféu de bronze conquistado"};
+    const char* const* headings = language == "es" ? spanish : language == "pt" ? portuguese : english;
+    const int g = trophy_current.grade == 'p' ? 0 : trophy_current.grade == 'g' ? 1
+                : trophy_current.grade == 's' ? 2 : 3;
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float pad = 16.0f * base_scale, icon = 64.0f * base_scale;
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - pad, viewport->WorkPos.y + pad),
+                            ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f * base_scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Border, colors[g]);
+    ImGui::Begin("##trophy", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
+    if (trophy_texture) {
+        ImGui::Image(trophy_texture->GetTexRef(), ImVec2(icon, icon));
+        ImGui::SameLine();
+    }
+    ImGui::BeginGroup();
+    ImGui::Dummy(ImVec2(0.0f, 4.0f * base_scale));
+    ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(colors[g]), "%s", headings[g]);
+    ImGui::TextUnformatted(trophy_current.name.empty() ? "Trophy" : trophy_current.name.c_str());
+    ImGui::EndGroup();
+    ImGui::End();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(2);
 }
 
 // The save list takes the keys and buttons that move and confirm; the rest stays with the game
@@ -1044,7 +1159,7 @@ void SetLoading(bool active, u32 done, u32 total) {
 bool Visible() {
     const auto& s = P4dSettings::Get();
     return initialized && (loading || background_total || menu_open || text_entry_active || choice_active ||
-                           choice_retiring || s.show_fps || NoticeActive());
+                           choice_retiring || s.show_fps || NoticeActive() || trophy_active);
 }
 
 bool CapturesInput() {
@@ -1101,6 +1216,7 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
     }
 
     UpdateChoiceTextures();
+    UpdateTrophyNotice();
     ImGui_ImplVulkan_NewFrame();
     ImGui::NewFrame();
     if (loading) {
@@ -1115,6 +1231,7 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
     if (NoticeActive()) {
         Notice();
     }
+    TrophyNotice();
     if (background_total && !loading && !menu_open) {
         BackgroundLoading();
     }
