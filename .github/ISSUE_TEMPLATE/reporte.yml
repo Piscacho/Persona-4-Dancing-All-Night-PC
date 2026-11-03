@@ -1,0 +1,77 @@
+name: Reportar un problema
+description: Algo no funciona en Persona 4: Dancing All Night para PC.
+title: "[Problema] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por avisar. Lo más rápido es usar el botón **Reportar un problema** del launcher (Avanzado, o el
+        enlace de la barra lateral): rellena casi todo solo y crea un `.zip` con el registro para adjuntarlo aquí.
+  - type: dropdown
+    id: problema
+    attributes:
+      label: ¿Qué ocurre?
+      options:
+        - El juego se cierra (crash)
+        - Se congela o se queda en negro
+        - Problema gráfico
+        - Problema de audio
+        - Controles o mando
+        - FPS bajos o tirones
+        - Problema del launcher
+        - Otro
+    validations:
+      required: true
+  - type: dropdown
+    id: momento
+    attributes:
+      label: ¿Cuándo ocurre?
+      options:
+        - Al abrir el launcher
+        - Al pulsar JUGAR
+        - En los logos o la carga
+        - En un menú
+        - Durante una canción
+        - Al ganar un trofeo
+        - Al guardar
+        - Otro momento
+    validations:
+      required: true
+  - type: dropdown
+    id: frecuencia
+    attributes:
+      label: ¿Se repite?
+      options:
+        - Siempre
+        - A veces
+        - Solo una vez
+    validations:
+      required: true
+  - type: textarea
+    id: descripcion
+    attributes:
+      label: Descripción
+      description: Qué estabas haciendo y qué pasó. Si puedes, los pasos para que vuelva a ocurrir.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión del port y de tu copia del juego
+      description: La del launcher (abajo a la izquierda, por ejemplo v1.1.1) y la que muestra Inicio (por ejemplo CUSA12112 · versión 01.00).
+    validations:
+      required: true
+  - type: textarea
+    id: equipo
+    attributes:
+      label: Tu equipo
+      description: Windows, procesador, RAM, tarjeta gráfica y versión del driver.
+      placeholder: "Windows 11, Ryzen 5 7600X, 32 GB, RTX 4080 SUPER (driver 576.xx)"
+    validations:
+      required: true
+  - type: textarea
+    id: registro
+    attributes:
+      label: Registro o informe
+      description: Arrastra aquí el `.zip` del botón Reportar un problema, o el archivo `user\last_run.log` de la carpeta del port.

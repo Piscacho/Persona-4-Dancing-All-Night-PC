@@ -62,7 +62,7 @@ NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 NEW_GROUP = {} if WINDOWS else {'start_new_session': True}
 UI_FONT, MONO_FONT, SERIF_FONT = 'Segoe UI', 'Consolas', 'Georgia'
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 # Updates come from this port's GitHub releases (tags windows-v<VERSION>, one .zip asset).
 UPDATES = True
 RELEASES_API = 'https://api.github.com/repos/Piscacho/Persona-4-Dancing-All-Night-PC/releases/latest'
@@ -215,6 +215,7 @@ def list_gpus():
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import button_icons  # noqa: E402
 import p4d_lang  # noqa: E402
+import p4d_report  # noqa: E402
 
 LANG = 'en'
 FONT_LOADED = False  # set by main() for the window; the command-line roles never need the font
@@ -1072,7 +1073,7 @@ def game_profile_of(folder):
 def game_environment(s):
     env = dict(os.environ)
     env['P4D_GAME_DIR'] = s['game_dir']
-    env.pop('P4D_PATCH_DIR', None)
+    # P4D_PATCH_DIR set by hand still passes: the launcher no longer offers an update folder.
     # Temporal upscaling is parked (build_graphics): a switch saved on by 2.1.8 has no control left to
     # turn it off, so it is ignored until the upscaler section comes back.
     env['P4D_EXPERIMENTAL_UPSCALER'] = '0'
@@ -1192,7 +1193,7 @@ class Launcher:
     def __init__(self, root, tk, ttk, filedialog, messagebox):
         self.tk, self.ttk, self.filedialog, self.messagebox = tk, ttk, filedialog, messagebox
         self.root = root
-        self.app = {**APP_DEFAULTS, **migrate_controls(load_json(CONFIG_FILE, {}))}
+        self.app = {**APP_DEFAULTS, **migrate_controls(load_json(CONFIG_FILE, {})), 'update_dir': ''}
         self.ini, self.ini_lines = load_ini()
         self.vars = {}
         self.process = self.job = None
@@ -1597,7 +1598,11 @@ class Launcher:
         self.side_note = tk.Label(side, text=_('In the game: Insert or R3+L2\nopens the port\'s menu.',
                                                'В игре: Insert или R3+L2\nоткрывает меню порта.'),
                                   bg=BG, fg=MUTED, font=self.font(UI_FONT, 9), justify='left', wraplength=self.px(210))
-        self.side_note.pack(anchor='w', padx=self.px(22), pady=self.px((0, 18)))
+        self.side_note.pack(anchor='w', padx=self.px(22), pady=self.px((0, 6)))
+        report = tk.Label(side, text=_('Having problems? Report them'), bg=BG, fg=ACCENT_HI, cursor='hand2',
+                          font=self.font(UI_FONT, 9, 'bold'))
+        report.pack(anchor='w', padx=self.px(22), pady=self.px((0, 18)))
+        report.bind('<Button-1>', lambda _e: self.open_report())
 
         right = tk.Frame(self.root, bg=PANEL)
         right.pack(side='left', fill='both', expand=True)
@@ -1834,11 +1839,6 @@ class Launcher:
                       'any region and version.',
                       'Ваш дамп игры (eboot.bin, sce_module, sce_sys): Persona 4: Dancing All Night, '
                       'любой регион и версия.'), on_change=self.game_changed)
-        self.folder(f, 'update_dir', _('Update folder (optional)'),
-                    _('Choose the folder of the update (eboot.bin, sce_sys)'),
-                    _('Only if the update is dumped apart from the game: it is laid over the game folder '
-                      'without changing either. Leave empty when the game folder already has the update.'),
-                    on_change=self.game_changed)
         self.folder(f, 'dlc_dir', _('DLC folder (optional)'),
                     _('Choose the folder with the extracted DLC (ADDCONT folders)'),
                     _('Folders extracted from the DLC packages, each ADDCONT<label> with sce_sys/param.sfo '
@@ -2389,6 +2389,143 @@ class Launcher:
             self.refresh_trophies()
         self.root.after(3000, self.poll_trophies)
 
+    # ---- problem reports ----------------------------------------------------------------------
+    def report_snapshot(self):
+        """The launcher's settings the report needs, read on the window's thread."""
+        return {'folder': self.meta_dir(), 'mods_dir': self.var('mods_dir', 'app').get(),
+                'mods_enabled': bool(self.var('mods_enabled', 'app').get()), 'gpu_id': self.var('gpu_id', 'app').get()}
+
+    @staticmethod
+    def report_info(snapshot):
+        """[(label, value)] the report states without asking: the port, the game copy, the PC (a helper
+        thread may run it: it reads no widget)."""
+        folder = snapshot['folder']
+        values = game_sfo(folder) if folder else {}
+        info = game_info(folder) if folder else None
+        region = {'UP': 'América', 'EP': 'Europa', 'JP': 'Japón', 'HP': 'Asia', 'KP': 'Corea'}.get(
+            (values.get('CONTENT_ID') or '')[:2], values.get('CONTENT_ID') or '?')
+        try:
+            profile = json.loads((DATA_DIR / 'out' / 'content-profile.json').read_text(encoding='utf-8'))
+            dlc = str(len(profile.get('mounted_addons') or []))
+        except (OSError, ValueError):
+            dlc = '?'
+        mods_dir = Path(snapshot['mods_dir'] or DATA_DIR / 'mods')
+        mods = len([p for p in mods_dir.iterdir() if p.is_dir()]) if mods_dir.is_dir() else 0
+        ram = p4d_report.memory_gb()
+        cards = p4d_report.graphics_cards(list_gpus())
+        gpu_choice = snapshot['gpu_id'] or 'Automática'
+        return [
+            ('Port', f'{APP_NAME} PC v{VERSION}'),
+            ('Juego', f"{info[0] if info else '?'} · {values.get('TITLE_ID', '?')} · versión "
+                      f"{info[1] if info else '?'} · {region}"),
+            ('DLC montados', dlc),
+            ('Mods', f"{mods} carpetas ({'activados' if snapshot['mods_enabled'] else 'desactivados'})"),
+            ('Windows', p4d_report.windows_version()),
+            ('Procesador', p4d_report.processor()),
+            ('RAM', f'{ram} GB' if ram else '?'),
+            ('Tarjetas gráficas', '; '.join(f'{name} (driver {driver})' for name, driver in cards) or '?'),
+            ('Tarjeta elegida', gpu_choice),
+            ('Idioma del launcher', LANG),
+        ]
+
+    def open_report(self):
+        """The report form: three choices, a description and a contact, over the detected facts;
+        "Create report" writes the .zip and offers the GitHub issue."""
+        tk, ttk = self.tk, self.ttk
+        if getattr(self, 'report_window', None) and self.report_window.winfo_exists():
+            self.report_window.lift()
+            return
+        win = self.report_window = tk.Toplevel(self.root, bg=PANEL)
+        win.title(_('Report a problem'))
+        win.transient(self.root)
+        win.resizable(False, False)
+        body = ttk.Frame(win, padding=self.px((22, 18, 22, 18)))
+        body.pack(fill='both', expand=True)
+        ttk.Label(body, text=_('Report a problem').upper(), background=PANEL, foreground=TEXT,
+                  font=self.heading_font(18)).grid(row=0, column=0, columnspan=2, sticky='w')
+        ttk.Label(body, text=_('Tell us what happens. The report adds your PC and the log of the last run; it '
+                               'holds no game files and no personal data.'),
+                  style='Muted.TLabel', wraplength=self.px(560), justify='left').grid(
+            row=1, column=0, columnspan=2, sticky='w', pady=self.px((2, 14)))
+        choices = {}
+        for row, (key, title, options) in enumerate((('problem', _('What happens?'), p4d_report.PROBLEMS),
+                                                     ('moment', _('When does it happen?'), p4d_report.MOMENTS),
+                                                     ('frequency', _('Does it happen again?'), p4d_report.FREQUENCIES)),
+                                                    start=2):
+            ttk.Label(body, text=title).grid(row=row, column=0, sticky='w', pady=self.px(4), padx=self.px((0, 14)))
+            labels = [_(label) for _key, label in options]
+            box = ttk.Combobox(body, values=labels, state='readonly', width=40)
+            box.current(0)
+            box.grid(row=row, column=1, sticky='w')
+            choices[key] = (box, options)
+        ttk.Label(body, text=_('Description')).grid(row=5, column=0, sticky='nw', pady=self.px((10, 4)))
+        description = tk.Text(body, height=6, width=52, wrap='word', bg=CARD, fg=TEXT, insertbackground=TEXT,
+                              relief='flat', font=self.font(UI_FONT, 10), padx=self.px(8), pady=self.px(6))
+        description.grid(row=5, column=1, sticky='w', pady=self.px((10, 4)))
+        ttk.Label(body, text=_('Contact (optional)')).grid(row=6, column=0, sticky='w', pady=self.px(4))
+        contact = ttk.Entry(body, width=42)
+        contact.grid(row=6, column=1, sticky='w')
+        ttk.Label(body, text=_('A GitHub or Discord user, so we can answer you.'), style='Muted.TLabel').grid(
+            row=7, column=1, sticky='w')
+        ttk.Label(body, text=_('Detected automatically'), style='Section.TLabel').grid(
+            row=8, column=0, columnspan=2, sticky='w', pady=self.px((14, 2)))
+        detected = tk.Text(body, height=11, width=72, wrap='word', bg=BG, fg=MUTED, relief='flat',
+                           font=self.font(UI_FONT, 9), padx=self.px(8), pady=self.px(6))
+        detected.grid(row=9, column=0, columnspan=2, sticky='we')
+        detected.insert('end', _('Reading your PC…'))
+        detected.configure(state='disabled')
+        info_holder = {}
+
+        def fill(info):
+            info_holder['info'] = info
+            if detected.winfo_exists():
+                detected.configure(state='normal')
+                detected.delete('1.0', 'end')
+                detected.insert('end', '\n'.join(f'{label}: {p4d_report.anonymize(str(value))}' for label, value in info))
+                detected.configure(state='disabled')
+        snapshot = self.report_snapshot()
+        threading.Thread(target=lambda: self.ui_calls.put(lambda i=self.report_info(snapshot): fill(i)),
+                         daemon=True).start()
+        buttons = ttk.Frame(body)
+        buttons.grid(row=10, column=0, columnspan=2, sticky='e', pady=self.px((16, 0)))
+
+        def create():
+            if 'info' not in info_holder:
+                return
+            answers = {key: options[box.current()][0] for key, (box, options) in choices.items()}
+            answers['description'] = description.get('1.0', 'end').strip()
+            answers['contact'] = contact.get().strip()
+            user_dir = self.trophy_user_dir()
+            extra = {'last_run.log': p4d_report.last_lines(user_dir / 'last_run.log')}
+            for name, path in (('p4d.ini', ini_path()), ('settings.json', CONFIG_FILE)):
+                try:
+                    extra[name] = Path(path).read_text(encoding='utf-8', errors='replace')
+                except OSError:
+                    pass
+            try:
+                path = p4d_report.write_report(user_dir / 'reports', 'p4d', answers, info_holder['info'], extra)
+            except OSError as error:
+                self.messagebox.showerror(APP_NAME, _('Could not save the report: {}').format(error), parent=win)
+                return
+            win.destroy()
+            if self.messagebox.askyesno(APP_NAME, _(
+                    'Report saved:\n{}\n\nOpen GitHub to send it? Attach the .zip file by dragging it into the '
+                    'issue box.').format(path)):
+                url = p4d_report.issue_url(RELEASES_PAGE, answers, info_holder['info'], APP_NAME)
+                if url:
+                    open_url(url)
+            if WINDOWS:
+                subprocess.Popen(['explorer', '/select,', str(path)])
+            else:
+                self.open_path(path.parent)
+        ttk.Button(buttons, text=_('Cancel'), command=win.destroy).pack(side='right', padx=self.px((8, 0)))
+        ttk.Button(buttons, text=_('Create report'), style='Play.TButton', command=create).pack(side='right')
+        win.update_idletasks()  # centred over the launcher
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - win.winfo_width()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f'+{max(0, x)}+{max(0, y)}')
+        win.grab_set()
+
     def build_advanced(self):
         tk, ttk = self.tk, self.ttk
         f = self.scrolled_page('advanced', _('Advanced', 'Дополнительно'),
@@ -2413,6 +2550,7 @@ class Launcher:
                        ).pack(side='left')
         ttk.Button(holder, text=_('Desktop shortcut', 'Ярлык на рабочем столе'), command=self.shortcut).pack(side='left', padx=self.px(6))
         ttk.Button(holder, text=_('Add to Steam'), command=self.add_to_steam).pack(side='left')
+        ttk.Button(holder, text=_('Report a problem'), command=self.open_report).pack(side='left', padx=self.px((6, 0)))
         ttk.Label(holder, text=f'v{VERSION}', style='Muted.TLabel').pack(side='left', padx=self.px(10))
         if not WINDOWS:
             self.build_linux_options(f)
@@ -3534,7 +3672,7 @@ def main():
     args = sys.argv[1:]
     if args and args[0] in ('--run', '--script'):
         sys.exit(run_role(args))
-    settings = {**APP_DEFAULTS, **migrate_controls(load_json(CONFIG_FILE, {}))}
+    settings = {**APP_DEFAULTS, **migrate_controls(load_json(CONFIG_FILE, {})), 'update_dir': ''}
     LANG = settings.get('ui_language') or windows_language()
     if not WINDOWS:
         integrate_desktop(settings.get('desktop_integration', True), os.environ.get('APPIMAGE'),
