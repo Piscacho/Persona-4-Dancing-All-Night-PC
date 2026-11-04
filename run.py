@@ -114,12 +114,17 @@ def find_executable(name):
     return None
 
 
+# Every region of the game: CUSA12112 (America), CUSA12811 (Europe).
+TITLE_IDS = ('CUSA12112', 'CUSA12811')
+
+
 def default_game_dir():
-    """The game dump next to the port: ../juego/CUSA12112 or ../CUSA12112."""
-    for candidate in (PORT.parent / 'juego' / 'CUSA12112', PORT.parent / 'CUSA12112'):
-        if (candidate / 'eboot.bin').is_file():
-            return candidate
-    return PORT.parent / 'CUSA12112'
+    """The game dump next to the port, first region found: ../juego/<id> or ../<id>."""
+    for title_id in TITLE_IDS:
+        for candidate in (PORT.parent / 'juego' / title_id, PORT.parent / title_id):
+            if (candidate / 'eboot.bin').is_file():
+                return candidate
+    return PORT.parent / TITLE_IDS[0]
 
 
 def default_dlc_dir(data):

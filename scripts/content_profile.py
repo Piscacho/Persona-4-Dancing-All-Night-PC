@@ -2,7 +2,8 @@
 
 Add-ons (DLC): --dlc-dir names a folder holding add-ons already extracted from their packages,
 each an ADDCONT<label> folder with sce_sys/param.sfo (the folder itself, or one level below,
-for example <dlc-dir>/CUSA12112/ADDCONT...). Those of this title are listed in addcont.txt
+for example <dlc-dir>/CUSA12112/ADDCONT...). Only those of the chosen game's title (CUSA12112
+America, CUSA12811 Europe: the DLC folder may hold both) are listed in addcont.txt
 (label, tab, folder) for p4d-probe --addcont-list."""
 import argparse
 import json

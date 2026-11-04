@@ -62,7 +62,7 @@ NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 NEW_GROUP = {} if WINDOWS else {'start_new_session': True}
 UI_FONT, MONO_FONT, SERIF_FONT = 'Segoe UI', 'Consolas', 'Georgia'
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 # Updates come from this port's GitHub releases (tags windows-v<VERSION>, one .zip asset).
 UPDATES = True
 RELEASES_API = 'https://api.github.com/repos/Piscacho/Persona-4-Dancing-All-Night-PC/releases/latest'
@@ -421,12 +421,17 @@ INI_DEFAULTS = {'upscaler': 'fsr3', 'preset': '1',
                 'render_resolution': 'native', 'engine_fps': '60',
                 'frames_queued': '1',
                 'anisotropy': '0', 'vibration': '100', 'mouse_lock': '1'}
+# Every region of the game: CUSA12112 (America), CUSA12811 (Europe). Any of them plays.
+TITLE_IDS = ('CUSA12112', 'CUSA12811')
+
+
 def default_game_dir():
-    """The dump next to the port: ../juego/CUSA12112 (this layout) or ../CUSA12112."""
-    for candidate in (PORT_DIR.parent / 'juego' / 'CUSA12112', PORT_DIR.parent / 'CUSA12112'):
-        if (candidate / 'eboot.bin').is_file():
-            return candidate
-    return PORT_DIR.parent / 'CUSA12112'
+    """The dump next to the port, first region found: ../juego/<id> (this layout) or ../<id>."""
+    for title_id in TITLE_IDS:
+        for candidate in (PORT_DIR.parent / 'juego' / title_id, PORT_DIR.parent / title_id):
+            if (candidate / 'eboot.bin').is_file():
+                return candidate
+    return PORT_DIR.parent / TITLE_IDS[0]
 
 
 DISPLAY_MODES = [('windowed', ('Windowed',)), ('borderless', ('Borderless',)), ('fullscreen', ('Fullscreen',))]
@@ -3093,8 +3098,8 @@ class Launcher:
         if not self.collect():
             return
         if not game_info(self.app['game_dir']):
-            self.messagebox.showerror(APP_NAME, _('Choose the game folder with eboot.bin (CUSA12112).',
-                                                  'Выберите папку игры с eboot.bin (CUSA12112).'))
+            self.messagebox.showerror(APP_NAME, _('Choose the game folder with eboot.bin (CUSA12112 / CUSA12811).',
+                                                  'Выберите папку игры с eboot.bin (CUSA12112 / CUSA12811).'))
             self.show('game')
             return
         if not self.offer_system_files():
@@ -3380,8 +3385,8 @@ class Launcher:
             return
         game = self.var('game_dir', 'app').get()
         if not game_info(game):
-            self.messagebox.showerror(APP_NAME, _('Choose the game folder with eboot.bin (CUSA12112).',
-                                                  'Выберите папку игры с eboot.bin (CUSA12112).'))
+            self.messagebox.showerror(APP_NAME, _('Choose the game folder with eboot.bin (CUSA12112 / CUSA12811).',
+                                                  'Выберите папку игры с eboot.bin (CUSA12112 / CUSA12811).'))
             return
         self.root.configure(cursor='watch')
         self.root.update_idletasks()

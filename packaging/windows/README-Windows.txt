@@ -1,12 +1,14 @@
 Persona 4: Dancing All Night para PC
 =======================================
 
-No incluye archivos del juego. Necesitas tu propia copia de Persona 4: Dancing All Night (PS4,
-CUSA12112) como carpeta: eboot.bin, sce_module y sce_sys.
+No incluye archivos del juego. Necesitas tu propia copia de Persona 4: Dancing All Night (PS4)
+como carpeta: eboot.bin, sce_module y sce_sys. Sirve cualquier región: CUSA12112 (América) o
+CUSA12811 (Europa).
 
 Primeros pasos
-1. Coloca la carpeta del juego junto a esta carpeta como juego\CUSA12112 (se detecta sola), o
-   elígela en el launcher: Game -> Carpeta del juego.
+1. Coloca la carpeta del juego junto a esta carpeta como juego\CUSA12112 o juego\CUSA12811 (se
+   detecta sola; con las dos, se elige la americana), o elígela en el launcher: Game -> Carpeta
+   del juego.
 2. Abre "Persona 4 Dancing All Night.exe" (el launcher). Si Windows muestra "Windows protegió
    tu PC", pulsa Más información -> Ejecutar de todas formas.
 3. Pulsa PLAY.
@@ -18,8 +20,12 @@ Primeros pasos
 DLC
 Los DLC se usan ya extraídos de sus paquetes: cada uno es una carpeta ADDCONT<etiqueta> con
 sce_sys\param.sfo y su .cpk. Cópialos en la carpeta dlc junto al launcher (directamente o dentro
-de dlc\CUSA12112\), o elige otra carpeta en Game -> Carpeta de DLC. El juego monta cada DLC
-cuando lo necesita.
+de dlc\CUSA12112\ o dlc\CUSA12811\), o elige otra carpeta en Game -> Carpeta de DLC. Los DLC de
+cada región solo sirven para su juego: la carpeta puede tener los de ambas y se usan los del
+juego elegido. El juego monta cada DLC cuando lo necesita.
+
+Las partidas también van por región (user\savedata\1\CUSA12112 o CUSA12811): al cambiar de
+región empiezas con la partida de esa versión.
 
 Dónde se guarda todo
 - Partidas, caché de shaders y registro: user\ junto a este archivo (consérvalo al actualizar).
