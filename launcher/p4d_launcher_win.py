@@ -62,7 +62,7 @@ NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 NEW_GROUP = {} if WINDOWS else {'start_new_session': True}
 UI_FONT, MONO_FONT, SERIF_FONT = 'Segoe UI', 'Consolas', 'Georgia'
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.1.2'
+VERSION = '1.1.3'
 # Updates come from this port's GitHub releases (tags windows-v<VERSION>, one .zip asset).
 UPDATES = True
 RELEASES_API = 'https://api.github.com/repos/Piscacho/Persona-4-Dancing-All-Night-PC/releases/latest'

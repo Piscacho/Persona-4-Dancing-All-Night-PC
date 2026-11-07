@@ -20,7 +20,7 @@ typedef struct { char label[17]; char padding[3]; } EntitlementLabel;
 typedef struct { EntitlementLabel label; uint32_t status; } AddcontInfo;
 typedef struct { char data[16]; } MountPoint;
 static struct { char label[17]; char host[512]; char mount[16]; } addons[MAX_ADDONS];
-static unsigned addon_count, addon_mounts;
+static unsigned addon_count, addon_mounts;  /* mounts done, for the report */
 static unsigned refs, initialized, configured;
 static uint32_t parameters[5];
 static unsigned queries, lists;
@@ -137,9 +137,15 @@ static ABI int32_t addon_mount(uint32_t service,const EntitlementLabel *label,Mo
     int i=find_addon(label);
     if (i<0) return NOT_FOUND;
     if (!addons[i].mount[0]) {
-        /* /addcont0, /addcont1, ... in mount order, as the system assigns them */
-        if (addon_mounts>=64) return MOUNT_FULL;
-        snprintf(addons[i].mount,sizeof(addons[i].mount),"/addcont%u",addon_mounts);
+        /* /addcont0, /addcont1, ...: the lowest number no mounted add-on holds, so an
+         * unmounted add-on frees its number and every add-on can be mounted at once. */
+        unsigned n=0;
+        for (unsigned j=0;j<addon_count;++j) {
+            char name[16]; snprintf(name,sizeof(name),"/addcont%u",n);
+            if (addons[j].mount[0] && !strcmp(addons[j].mount,name)) { ++n; j=(unsigned)-1; }
+        }
+        if (n>=MAX_ADDONS) return MOUNT_FULL;
+        snprintf(addons[i].mount,sizeof(addons[i].mount),"/addcont%u",n);
         if (runtime_file_mount(addons[i].mount,addons[i].host)) { addons[i].mount[0]=0; return MOUNT_FULL; }
         ++addon_mounts;
         printf("AppContent: add-on %s mounted at %s\n",addons[i].label,addons[i].mount);

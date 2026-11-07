@@ -31,7 +31,9 @@ typedef struct stat HostStat;
 #endif
 #define ERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 #define MAX_FILES 1024
-#define MAX_MOUNTS 16
+/* The system mounts (/app0, /hostapp, /temp0, /download0, /data, saves) plus every add-on
+ * mounted at once: a game may keep all its DLC mounted (runtime_content.c MAX_ADDONS). */
+#define MAX_MOUNTS 192
 
 typedef struct { int64_t sec, nsec; } GuestTimespec;
 typedef struct {
