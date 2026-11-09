@@ -3297,11 +3297,14 @@ class Launcher:
             self.update_label.configure(text=_('Downloading version {}… {}%', 'Загрузка версии {}… {}%').format(
                 version, percent))
 
+        appimage = running_appimage()
+
         def work():
             try:
                 shutil.rmtree(UPDATE_DIR, ignore_errors=True)
                 UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-                archive = UPDATE_DIR / 'update.zip'
+                # An AppImage is downloaded next to itself, so the swap is a rename on one disk.
+                archive = Path(appimage + '.new') if appimage else UPDATE_DIR / 'update.zip'
                 request = urllib.request.Request(url, headers={'User-Agent': 'p4d-launcher'})
                 with urllib.request.urlopen(request, timeout=60) as response, open(archive, 'wb') as out:
                     total, done, shown = int(response.headers.get('Content-Length') or 0), 0, -1
@@ -3312,6 +3315,11 @@ class Launcher:
                         if percent != shown:
                             shown = percent
                             self.ui_calls.put(lambda p=percent: progress(p))
+                if appimage:
+                    replace_appimage(appimage, archive)
+                    subprocess.Popen([appimage], stdin=subprocess.DEVNULL, start_new_session=True)
+                    self.ui_calls.put(self.root.destroy)
+                    return
                 with zipfile.ZipFile(archive) as package:
                     package.extractall(UPDATE_DIR / 'new')
                 archive.unlink()
@@ -3323,6 +3331,9 @@ class Launcher:
                                  cwd=str(new), stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
                 self.ui_calls.put(self.root.destroy)
             except (OSError, zipfile.BadZipFile) as failure:
+                if appimage:
+                    Path(appimage + '.new').unlink(missing_ok=True)
+
                 def failed(error=failure):
                     self.update_button.configure(state='normal')
                     self.update_label.configure(text=_('Version {} is available.', 'Доступна версия {}.').format(version))
@@ -3639,9 +3650,27 @@ def latest_release():
     with urllib.request.urlopen(request, timeout=15) as response:
         release = json.load(response)
     version = '.'.join(re.findall(r'\d+', release['tag_name']))
+    suffix = '.appimage' if running_appimage() else '.zip'
     url = next((asset['browser_download_url'] for asset in release.get('assets', [])
-                if asset.get('name', '').lower().endswith('.zip')), None)
+                if asset.get('name', '').lower().endswith(suffix)), None)
     return version, url, release.get('html_url') or RELEASES_PAGE
+
+
+def running_appimage():
+    """Path of the AppImage this launcher runs from (Linux), or None."""
+    return None if WINDOWS else os.environ.get('APPIMAGE') or None
+
+
+def replace_appimage(appimage, downloaded):
+    """Puts the downloaded AppImage in place of the running one. The running copy keeps working
+    (Linux keeps its old file open); the new one starts next time. Raises OSError when the
+    download is not an AppImage or the folder is read-only."""
+    downloaded = Path(downloaded)
+    with open(downloaded, 'rb') as file:
+        if file.read(4) != b'\x7fELF':
+            raise OSError('the download is not an AppImage')
+    downloaded.chmod(0o755)
+    os.replace(downloaded, appimage)
 
 
 def install_update(target, wait_pid):

@@ -26,34 +26,33 @@ Port para PC de **Persona 4: Dancing All Night** (PlayStation 4, CUSA12112) para
 - Ajustes del juego: `p4d.ini`; ajustes del launcher: `%APPDATA%\p4d-launcher`.
 - Registro de la última partida: `user\last_run.log`.
 
-## Steam Deck y Linux (sin probar)
+## Steam Deck y Linux (experimental)
 
-> **Aún no está probado.** No hay versión nativa para Linux: la idea es usar la de Windows con
-> Proton, la capa de Steam que ejecuta juegos de Windows. Si lo pruebas, funcione o no, cuéntanos
-> cómo te fue con el botón **Reportar un problema** del launcher (o abriendo un issue aquí).
+> **Aún no está probado en una Steam Deck ni en un Linux real.** El launcher se comprueba en Debian,
+> Fedora, Ubuntu y Arch, pero nadie ha jugado todavía con esta versión. Si la pruebas, funcione o no,
+> cuéntanos cómo te fue con **Reportar un problema** (en el launcher) o abriendo un issue.
 
-En el Steam Deck, haz los pasos 1 a 4 en el **modo Escritorio**:
+En la Steam Deck, haz esto en el **modo Escritorio**:
 
-1. Descarga el `.zip` de [Releases](#descargar-y-jugar) y descomprímelo en una carpeta, por ejemplo
-   `~/Juegos/P4D`.
-2. Pon la carpeta del juego junto a ella como `juego/CUSA12112`, igual que en Windows. Los DLC ya extraídos
-   (carpetas `ADDCONT…`) van en `dlc/` dentro de la carpeta del port.
-3. En Steam: **Juegos → Añadir un juego que no es de Steam**. Pulsa **Examinar**, cambia el filtro de
-   archivos a **Todos los archivos** y elige **`Persona 4 Dancing All Night.exe`**.
-4. En la biblioteca, clic derecho sobre el juego → **Propiedades → Compatibilidad** → marca **Forzar el
-   uso de una herramienta de compatibilidad de Steam Play** y elige **Proton Experimental** (o la
-   versión más reciente).
-5. Abre el juego desde Steam: se abre el launcher. Revisa que encuentre la carpeta del juego (si no,
-   elígela en **Game → Carpeta del juego**; tu carpeta personal aparece como la unidad `Z:`) y pulsa
-   **PLAY**.
+1. Descarga **`p4d-x86_64.AppImage`** desde
+   [Releases](https://github.com/Piscacho/Persona-4-Dancing-All-Night-PC/releases/latest).
+   Es un solo archivo: no hay que instalar nada.
+2. Ábrelo con doble clic. Si no abre: clic derecho → **Propiedades → Permisos** → marca **Es ejecutable**.
+3. En el launcher, elige la carpeta del juego (**Game → Carpeta del juego**, la que tiene `eboot.bin`) y,
+   si tienes DLC ya extraídos (carpetas `ADDCONT…`), su carpeta en **Game → Carpeta de DLC**.
+4. Cierra Steam (**Steam → Salir**) y en el launcher pulsa **Avanzado → Añadir a Steam**: crea el acceso con
+   su portada y su logo.
+5. Vuelve al **modo Juego**: aparece en tu biblioteca. Al abrirlo desde ahí entra directo al juego.
 
-- En el **modo Juego** del Steam Deck, el launcher se maneja con el trackpad o la pantalla táctil.
-  Para entrar directo al juego, puedes añadir también **`Play Persona 4 Dancing All Night.exe`** como otro juego, con
-  Proton igual que arriba: usa los ajustes que guardaste en el launcher.
-- Los controles del Steam Deck funcionan como un mando de Xbox.
-- Las partidas quedan en `user/` dentro de la carpeta del port. Los ajustes del launcher quedan dentro
-  del prefijo de Proton de ese acceso directo de Steam.
-- Necesitas un controlador con Vulkan 1.3 (el del Steam Deck y Mesa reciente lo tienen).
+- **Actualizar:** el launcher avisa cuando hay versión nueva; pulsa **Actualizar** y reemplaza el
+  AppImage él solo. Partidas y ajustes se conservan.
+- Partidas, ajustes y registro se guardan en `~/.local/share/p4d` (el registro de la última partida es
+  `user/last_run.log` ahí dentro).
+- Los controles de la Steam Deck funcionan como un mando.
+
+**Alternativa con Proton:** también puedes usar la versión de Windows. Descomprime el `.zip`, añade
+**`Persona 4 Dancing All Night.exe`** a Steam con **Juegos → Añadir un juego que no es de Steam** (cambia el filtro a **Todos
+los archivos**) y en **Propiedades → Compatibilidad** fuerza **Proton Experimental**.
 
 ## Requisitos
 

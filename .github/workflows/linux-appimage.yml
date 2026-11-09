@@ -1,22 +1,27 @@
 # Linux AppImage (experimental, not tested on real hardware yet): built on Ubuntu 24.04 so it starts on
 # glibc 2.39 or newer (SteamOS, Bazzite/Fedora, Debian 13, Ubuntu 24.04+), then its launcher is opened
-# on those distros. Run by hand (Actions > Linux AppImage > Run workflow):
-#   - no tag: build and check only (the AppImage is kept as a workflow artifact for 30 days).
-#   - new tag (e.g. linux-v1.1.3-test1): also published as a pre-release on that commit, for testers.
+# on those distros.
+#   - A release published (gh release create windows-vX.Y.Z): its AppImage is built from that tag and
+#     attached to it, next to the Windows zip. The launcher on Linux updates itself from that asset.
+#   - By hand (Actions > Linux AppImage > Run workflow): no tag builds and checks only (the AppImage
+#     stays 30 days as a workflow artifact); an existing release's tag gets the AppImage attached
+#     (replacing it); a new tag (e.g. linux-v1.1.3-test1) becomes a test pre-release on that commit.
 name: Linux AppImage
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: New tag for a test pre-release (e.g. linux-v1.1.3-test1). Empty builds only.
+        description: Release to attach the AppImage to; a new tag makes a test pre-release. Empty builds only.
         required: false
 
 permissions:
   contents: write
 
 concurrency:
-  group: linux-appimage-${{ inputs.tag || github.ref }}
+  group: linux-appimage-${{ inputs.tag || github.event.release.tag_name || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -66,23 +71,22 @@ jobs:
 
   publish:
     needs: smoke
-    if: inputs.tag != ''
+    if: inputs.tag != '' || github.event_name == 'release'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: p4d-x86_64.AppImage
           path: dist
-      - name: Pre-release
+      - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists: use a new tag for each test build" >&2; exit 1
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "Linux (experimental) $TAG" \
+              --notes "Versión de prueba para Linux y Steam Deck, sin probar todavía (commit \`${GITHUB_SHA::7}\`). Descarga \`p4d-x86_64.AppImage\`, dale permiso de ejecución (\`chmod +x p4d-x86_64.AppImage\`) y ábrelo. Cuéntanos si abre y si el juego funciona con **Reportar un problema** o en un issue."
           fi
-          gh release create "$TAG" --prerelease --latest=false --target "$GITHUB_SHA" \
-            --title "Linux (experimental) $TAG" \
-            --notes "Versión de prueba para Linux y Steam Deck, sin probar todavía (commit \`${GITHUB_SHA::7}\`). Descarga \`p4d-x86_64.AppImage\`, dale permiso de ejecución (\`chmod +x p4d-x86_64.AppImage\`) y ábrelo. Cuéntanos si abre y si el juego funciona con **Reportar un problema** o en un issue."
-          gh release upload "$TAG" dist/p4d-x86_64.AppImage dist/p4d-x86_64.AppImage.sha256
+          gh release upload "$TAG" --clobber dist/p4d-x86_64.AppImage dist/p4d-x86_64.AppImage.sha256
