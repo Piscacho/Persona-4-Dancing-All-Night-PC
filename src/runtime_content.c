@@ -39,9 +39,12 @@ void runtime_content_load_addons(const char *path) {
         line[strcspn(line,"\r\n")]=0;
         char *tab=strchr(line,'\t');
         if (!tab || tab==line || tab-line>16 || !tab[1]) continue;
-        *tab=0;
-        snprintf(addons[addon_count].label,sizeof(addons[addon_count].label),"%s",line);
-        snprintf(addons[addon_count].host,sizeof(addons[addon_count].host),"%s",tab+1);
+        size_t label_len=(size_t)(tab-line),host_len=strlen(tab+1);
+        if (host_len>=sizeof(addons[addon_count].host)) {
+            fprintf(stderr,"WARNING: add-on folder path too long, skipped: %s\n",tab+1); continue;
+        }
+        memcpy(addons[addon_count].label,line,label_len); addons[addon_count].label[label_len]=0;
+        memcpy(addons[addon_count].host,tab+1,host_len+1);
         ++addon_count;
     }
     fclose(f);
