@@ -1,0 +1,88 @@
+# Linux AppImage (experimental, not tested on real hardware yet): built on Ubuntu 24.04 so it starts on
+# glibc 2.39 or newer (SteamOS, Bazzite/Fedora, Debian 13, Ubuntu 24.04+), then its launcher is opened
+# on those distros. Run by hand (Actions > Linux AppImage > Run workflow):
+#   - no tag: build and check only (the AppImage is kept as a workflow artifact for 30 days).
+#   - new tag (e.g. linux-v1.1.3-test1): also published as a pre-release on that commit, for testers.
+name: Linux AppImage
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: New tag for a test pre-release (e.g. linux-v1.1.3-test1). Empty builds only.
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: linux-appimage-${{ inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Dependencies
+        run: |
+          bash packaging/linux/ci-deps.sh
+          python3 -m venv out/venv
+          out/venv/bin/pip install -q pyinstaller pillow iced-x86==1.21.0
+      - name: Build
+        run: bash build.sh
+      - name: AppImage
+        run: |
+          PATH="$PWD/out/venv/bin:$PATH" bash packaging/linux/build.sh
+          cd dist && sha256sum p4d-x86_64.AppImage | sed 's/  / */' > p4d-x86_64.AppImage.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p4d-x86_64.AppImage
+          path: dist/p4d-x86_64.AppImage*
+          retention-days: 30
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # debian:13 has SteamOS 3.7's glibc (2.41), fedora:42 is Bazzite's base.
+        image: ['debian:13', 'fedora:42', 'ubuntu:24.04', 'archlinux:latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: p4d-x86_64.AppImage
+          path: dist
+      - name: Open the launcher on ${{ matrix.image }}
+        run: |
+          chmod +x dist/p4d-x86_64.AppImage
+          docker run --rm -v "$PWD:/w:ro" "${{ matrix.image }}" bash /w/packaging/linux/smoke-test.sh /w/dist/p4d-x86_64.AppImage
+
+  publish:
+    needs: smoke
+    if: inputs.tag != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: p4d-x86_64.AppImage
+          path: dist
+      - name: Pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists: use a new tag for each test build" >&2; exit 1
+          fi
+          gh release create "$TAG" --prerelease --latest=false --target "$GITHUB_SHA" \
+            --title "Linux (experimental) $TAG" \
+            --notes "Versión de prueba para Linux y Steam Deck, sin probar todavía (commit \`${GITHUB_SHA::7}\`). Descarga \`p4d-x86_64.AppImage\`, dale permiso de ejecución (\`chmod +x p4d-x86_64.AppImage\`) y ábrelo. Cuéntanos si abre y si el juego funciona con **Reportar un problema** o en un issue."
+          gh release upload "$TAG" dist/p4d-x86_64.AppImage dist/p4d-x86_64.AppImage.sha256
