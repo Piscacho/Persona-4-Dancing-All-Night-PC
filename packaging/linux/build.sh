@@ -29,7 +29,7 @@ install -m644 launcher/brand.ttf launcher/brand-OFL.txt launcher/logo.png "$shar
 # iced-x86 (pip install iced-x86==1.21.0): scripts/isa_rewrite.py, CPUs without MOVBE/BMI1/LZCNT.
 hidden=()
 for module in argparse base64 collections hashlib json re shutil socket struct tempfile threading uuid xml.etree.ElementTree \
-              urllib.request iced_x86; do
+              urllib.request iced_x86 PIL.ImageTk PIL._tkinter_finder; do
     hidden+=(--hidden-import "$module")
 done
 python3 -c 'import iced_x86' || { echo 'Need iced-x86: pip install iced-x86==1.21.0' >&2; exit 1; }
